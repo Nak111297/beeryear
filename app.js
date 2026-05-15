@@ -53,8 +53,8 @@ function createId() {
 const initialState = {
   people: [
     { id: "nico", name: "Nico", color: "#f59f00" },
-    { id: "vale", name: "Vale", color: "#4f8a55" },
-    { id: "diego", name: "Diego", color: "#a23e48" },
+    { id: "vale", name: "Ale", color: "#4f8a55" },
+    { id: "diego", name: "Nico", color: "#a23e48" },
   ],
   drinks: [],
 };
