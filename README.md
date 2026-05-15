@@ -14,8 +14,13 @@ Abre `index.html` en el navegador.
 - Breakdown de cuántas chelas se tomó cada jugador con cada amigo.
 - Barra inferior para navegar entre Inicio, Stats e Historial.
 - Stats con litros estimados, six packs aproximados y gráficas por mes, presentación y tipo.
-- Exportar/importar JSON para mover el marcador entre compus.
+- Firebase Auth anónimo + Firestore realtime para que todos vean el mismo marcador.
+- Exportar/importar JSON para respaldo o migración.
 
 ## Nota
 
-Esta primera versión guarda los datos en el navegador con `localStorage`. Para que cada amigo suba desde su propio teléfono en tiempo real, el siguiente paso es conectarla a una base de datos y login.
+La app guarda datos compartidos en Cloud Firestore bajo `groups/beeryear`. Si Firestore está vacío, crea los amigos iniciales o migra el viejo `localStorage` del navegador actual.
+
+## Firebase
+
+Activa **Authentication > Sign-in method > Anonymous** en Firebase Console. Las reglas recomendadas están en `firestore.rules`.

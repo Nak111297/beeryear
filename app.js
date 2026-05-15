@@ -1,6 +1,42 @@
-const STORAGE_KEY = "beer-year-tracker-v1";
+import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.5/firebase-app.js";
+import {
+  getAuth,
+  signInAnonymously,
+} from "https://www.gstatic.com/firebasejs/10.12.5/firebase-auth.js";
+import {
+  addDoc,
+  collection,
+  deleteDoc,
+  doc,
+  getDocs,
+  getFirestore,
+  onSnapshot,
+  serverTimestamp,
+  setDoc,
+  writeBatch,
+} from "https://www.gstatic.com/firebasejs/10.12.5/firebase-firestore.js";
+
+const LEGACY_STORAGE_KEY = "beer-year-tracker-v1";
+const GROUP_ID = "beeryear";
 const MONTHS = ["Ene", "Feb", "Mar", "Abr", "May", "Jun", "Jul", "Ago", "Sep", "Oct", "Nov", "Dic"];
 const COLORS = ["#f59f00", "#4f8a55", "#a23e48", "#2563eb", "#7c3aed", "#0f766e"];
+const firebaseConfig = {
+  apiKey: "AIzaSyC4gsYzlTYIyDpebjXp8IHQzZSsEgcCi84",
+  authDomain: "beeryear-cfa32.firebaseapp.com",
+  databaseURL: "https://beeryear-cfa32-default-rtdb.firebaseio.com",
+  projectId: "beeryear-cfa32",
+  storageBucket: "beeryear-cfa32.firebasestorage.app",
+  messagingSenderId: "295617272114",
+  appId: "1:295617272114:web:9e769b5b698649eaee1f2b",
+  measurementId: "G-YC62DXF5D3",
+};
+
+const firebaseApp = initializeApp(firebaseConfig);
+const auth = getAuth(firebaseApp);
+const db = getFirestore(firebaseApp);
+const groupRef = doc(db, "groups", GROUP_ID);
+const peopleRef = collection(db, "groups", GROUP_ID, "people");
+const drinksRef = collection(db, "groups", GROUP_ID, "drinks");
 
 function createId() {
   if (window.crypto?.randomUUID) return window.crypto.randomUUID();
@@ -9,14 +45,14 @@ function createId() {
 
 const initialState = {
   people: [
-    { id: createId(), name: "Nico", color: "#f59f00" },
-    { id: createId(), name: "Vale", color: "#4f8a55" },
-    { id: createId(), name: "Diego", color: "#a23e48" },
+    { id: "nico", name: "Nico", color: "#f59f00" },
+    { id: "vale", name: "Vale", color: "#4f8a55" },
+    { id: "diego", name: "Diego", color: "#a23e48" },
   ],
   drinks: [],
 };
 
-let state = loadState();
+let state = { people: [...initialState.people], drinks: [] };
 
 const els = {
   currentYear: document.querySelector("#currentYear"),
@@ -68,21 +104,70 @@ const els = {
   emptyStateTemplate: document.querySelector("#emptyStateTemplate"),
 };
 
-function loadState() {
-  const raw = localStorage.getItem(STORAGE_KEY);
-  if (!raw) return initialState;
+function loadLegacyState() {
+  const fallback = { people: [], drinks: [] };
+  let raw = null;
+
+  try {
+    raw = localStorage.getItem(LEGACY_STORAGE_KEY);
+  } catch {
+    return fallback;
+  }
+
+  if (!raw) return fallback;
 
   try {
     const parsed = JSON.parse(raw);
-    if (!Array.isArray(parsed.people) || !Array.isArray(parsed.drinks)) return initialState;
+    if (!Array.isArray(parsed.people) || !Array.isArray(parsed.drinks)) return fallback;
     return parsed;
   } catch {
-    return initialState;
+    return fallback;
   }
 }
 
-function saveState() {
-  localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+function markLegacyMigrated() {
+  try {
+    localStorage.setItem(`${LEGACY_STORAGE_KEY}-migrated`, new Date().toISOString());
+  } catch {
+    // localStorage can be blocked in private contexts; Firestore still works.
+  }
+}
+
+function normalizePeople(people) {
+  return people
+    .filter((person) => person?.name)
+    .map((person, index) => ({
+      id: String(person.id || createId()),
+      name: String(person.name).trim(),
+      color: person.color || COLORS[index % COLORS.length],
+    }));
+}
+
+function normalizeDrinks(drinks) {
+  return drinks
+    .filter((drink) => drink?.personId && drink?.date)
+    .map((drink) => ({
+      id: String(drink.id || createId()),
+      personId: String(drink.personId),
+      count: Number(drink.count) || 1,
+      date: String(drink.date),
+      beerName: drink.beerName ? String(drink.beerName) : "",
+      type: drink.type ? String(drink.type) : "Lager",
+      format: drink.format ? String(drink.format) : "Lata",
+      mood: drink.mood ? String(drink.mood) : "Con amigos",
+      companionPersonId: drink.companionPersonId ? String(drink.companionPersonId) : "",
+      note: drink.note ? String(drink.note) : "",
+      createdAt: drink.createdAt ? String(drink.createdAt) : new Date().toISOString(),
+    }));
+}
+
+function showFirebaseError(error) {
+  console.error(error);
+  els.rewardToast.classList.remove("show");
+  void els.rewardToast.offsetWidth;
+  els.rewardToast.querySelector("span").textContent = "!";
+  els.rewardToast.querySelector("strong").textContent = error?.code || "Firebase no conectó";
+  els.rewardToast.classList.add("show");
 }
 
 function todayISO() {
@@ -112,6 +197,97 @@ function formatDate(dateString) {
     day: "numeric",
     month: "short",
   }).format(parseLocalDate(dateString));
+}
+
+async function seedInitialDataIfEmpty() {
+  const [peopleSnapshot, drinksSnapshot] = await Promise.all([getDocs(peopleRef), getDocs(drinksRef)]);
+  if (!peopleSnapshot.empty) return;
+
+  const legacyState = loadLegacyState();
+  const seedPeople = normalizePeople(
+    legacyState.people.length ? legacyState.people : initialState.people,
+  );
+  const seedDrinks = drinksSnapshot.empty ? normalizeDrinks(legacyState.drinks) : [];
+  const batch = writeBatch(db);
+
+  seedPeople.forEach((person) => {
+    batch.set(doc(peopleRef, person.id), {
+      name: person.name,
+      color: person.color,
+      createdAt: serverTimestamp(),
+    });
+  });
+
+  seedDrinks.forEach((drink) => {
+    batch.set(doc(drinksRef, drink.id), {
+      personId: drink.personId,
+      count: drink.count,
+      date: drink.date,
+      beerName: drink.beerName,
+      type: drink.type,
+      format: drink.format,
+      mood: drink.mood,
+      companionPersonId: drink.companionPersonId,
+      note: drink.note,
+      createdAt: drink.createdAt,
+      serverCreatedAt: serverTimestamp(),
+    });
+  });
+
+  batch.set(
+    groupRef,
+    {
+      name: "Beer Year",
+      seededAt: serverTimestamp(),
+      updatedAt: serverTimestamp(),
+    },
+    { merge: true },
+  );
+
+  await batch.commit();
+  markLegacyMigrated();
+}
+
+function listenToFirestore() {
+  onSnapshot(
+    peopleRef,
+    (snapshot) => {
+      state.people = snapshot.docs
+        .map((personDoc) => ({
+          id: personDoc.id,
+          name: personDoc.data().name,
+          color: personDoc.data().color,
+        }))
+        .filter((person) => person.name)
+        .sort((a, b) => a.name.localeCompare(b.name));
+      render();
+    },
+    showFirebaseError,
+  );
+
+  onSnapshot(
+    drinksRef,
+    (snapshot) => {
+      state.drinks = snapshot.docs
+        .map((drinkDoc) => ({
+          id: drinkDoc.id,
+          ...drinkDoc.data(),
+        }))
+        .filter((drink) => drink.personId && drink.date);
+      render();
+    },
+    showFirebaseError,
+  );
+}
+
+async function startFirebase() {
+  try {
+    await signInAnonymously(auth);
+    await seedInitialDataIfEmpty();
+    listenToFirestore();
+  } catch (error) {
+    showFirebaseError(error);
+  }
 }
 
 function getPerson(id) {
@@ -503,36 +679,44 @@ function escapeHTML(value) {
   });
 }
 
-function addDrink(event) {
+async function addDrink(event) {
   event.preventDefault();
   if (!state.people.length) return;
+  const button = els.drinkForm.querySelector(".primary-button");
+  button.disabled = true;
 
-  state.drinks.push({
-    id: createId(),
-    personId: els.personSelect.value,
-    count: 1,
-    date: els.drinkDate.value,
-    beerName: els.beerName.value.trim(),
-    type: els.beerType.value,
-    format: els.beerFormat.value,
-    mood: els.drinkMood.value,
-    companionPersonId: els.drinkCompanionPerson.value,
-    note: els.drinkNote.value.trim(),
-    createdAt: new Date().toISOString(),
-  });
+  try {
+    await addDoc(drinksRef, {
+      personId: els.personSelect.value,
+      count: 1,
+      date: els.drinkDate.value,
+      beerName: els.beerName.value.trim(),
+      type: els.beerType.value,
+      format: els.beerFormat.value,
+      mood: els.drinkMood.value,
+      companionPersonId: els.drinkCompanionPerson.value,
+      note: els.drinkNote.value.trim(),
+      createdAt: new Date().toISOString(),
+      serverCreatedAt: serverTimestamp(),
+    });
 
-  els.beerName.value = "";
-  els.drinkNote.value = "";
-  saveState();
-  render();
-  rewardUpload();
-  setTimeout(() => closeModal(els.beerModal), 260);
+    els.beerName.value = "";
+    els.drinkNote.value = "";
+    rewardUpload();
+    setTimeout(() => closeModal(els.beerModal), 260);
+  } catch (error) {
+    showFirebaseError(error);
+  } finally {
+    button.disabled = false;
+  }
 }
 
 function rewardUpload() {
   const button = els.drinkForm.querySelector(".primary-button");
   const mainScore = document.querySelector(".main-score");
 
+  els.rewardToast.querySelector("span").textContent = "+1";
+  els.rewardToast.querySelector("strong").textContent = "Birra sumada";
   els.rewardToast.classList.remove("show");
   button.classList.remove("just-added");
   mainScore.classList.remove("score-bump");
@@ -564,38 +748,50 @@ function triggerCheers() {
   els.cheersOverlay.classList.add("show");
 }
 
-function addFriend(event) {
+async function addFriend(event) {
   event.preventDefault();
   const name = els.friendName.value.trim();
   if (!name) return;
+  const id = createId();
 
-  state.people.push({
-    id: createId(),
-    name,
-    color: els.friendColor.value || COLORS[state.people.length % COLORS.length],
-  });
+  try {
+    await setDoc(doc(peopleRef, id), {
+      name,
+      color: els.friendColor.value || COLORS[state.people.length % COLORS.length],
+      createdAt: serverTimestamp(),
+    });
 
-  els.friendName.value = "";
-  els.friendColor.value = COLORS[state.people.length % COLORS.length];
-  saveState();
-  render();
+    els.friendName.value = "";
+    els.friendColor.value = COLORS[(state.people.length + 1) % COLORS.length];
+  } catch (error) {
+    showFirebaseError(error);
+  }
 }
 
-function removePerson(id) {
-  state.people = state.people.filter((person) => person.id !== id);
-  state.drinks = state.drinks.filter((drink) => drink.personId !== id);
-  state.drinks = state.drinks.map((drink) => {
-    if (drink.companionPersonId !== id) return drink;
-    return { ...drink, companionPersonId: "" };
-  });
-  saveState();
-  render();
+async function removePerson(id) {
+  try {
+    const batch = writeBatch(db);
+    batch.delete(doc(peopleRef, id));
+    state.drinks.forEach((drink) => {
+      const drinkRef = doc(drinksRef, drink.id);
+      if (drink.personId === id) {
+        batch.delete(drinkRef);
+      } else if (drink.companionPersonId === id) {
+        batch.set(drinkRef, { companionPersonId: "" }, { merge: true });
+      }
+    });
+    await batch.commit();
+  } catch (error) {
+    showFirebaseError(error);
+  }
 }
 
-function removeDrink(id) {
-  state.drinks = state.drinks.filter((drink) => drink.id !== id);
-  saveState();
-  render();
+async function removeDrink(id) {
+  try {
+    await deleteDoc(doc(drinksRef, id));
+  } catch (error) {
+    showFirebaseError(error);
+  }
 }
 
 function exportData() {
@@ -613,13 +809,37 @@ function importData(event) {
   if (!file) return;
 
   const reader = new FileReader();
-  reader.addEventListener("load", () => {
+  reader.addEventListener("load", async () => {
     try {
       const parsed = JSON.parse(reader.result);
       if (!Array.isArray(parsed.people) || !Array.isArray(parsed.drinks)) return;
-      state = parsed;
-      saveState();
-      render();
+      const batch = writeBatch(db);
+      normalizePeople(parsed.people).forEach((person) => {
+        batch.set(doc(peopleRef, person.id), {
+          name: person.name,
+          color: person.color,
+          importedAt: serverTimestamp(),
+        });
+      });
+      normalizeDrinks(parsed.drinks).forEach((drink) => {
+        batch.set(doc(drinksRef, drink.id), {
+          personId: drink.personId,
+          count: drink.count,
+          date: drink.date,
+          beerName: drink.beerName,
+          type: drink.type,
+          format: drink.format,
+          mood: drink.mood,
+          companionPersonId: drink.companionPersonId,
+          note: drink.note,
+          createdAt: drink.createdAt,
+          serverCreatedAt: serverTimestamp(),
+          importedAt: serverTimestamp(),
+        });
+      });
+      batch.set(groupRef, { updatedAt: serverTimestamp() }, { merge: true });
+      await batch.commit();
+      event.target.value = "";
     } catch {
       event.target.value = "";
     }
@@ -689,3 +909,4 @@ els.importFile.addEventListener("change", importData);
 els.drinkDate.value = todayISO();
 els.friendColor.value = COLORS[state.people.length % COLORS.length];
 render();
+startFirebase();
