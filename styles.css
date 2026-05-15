@@ -519,6 +519,32 @@ select:focus {
     inset 0 -2px 0 rgba(24, 32, 27, 0.04);
 }
 
+.now-pill {
+  display: grid;
+  min-height: 46px;
+  align-content: center;
+  border: 1px solid rgba(24, 32, 27, 0.26);
+  border-radius: 8px;
+  background:
+    linear-gradient(135deg, rgba(255, 209, 102, 0.28), transparent 62%),
+    #fffdf6;
+  color: var(--ink);
+  padding: 6px 12px;
+  box-shadow: inset 0 -2px 0 rgba(24, 32, 27, 0.06);
+}
+
+.now-pill strong {
+  font-size: 0.92rem;
+  line-height: 1;
+}
+
+.now-pill small {
+  margin-top: 4px;
+  color: var(--muted);
+  font-size: 0.72rem;
+  font-weight: 850;
+}
+
 .wide-field {
   grid-column: 1 / -1;
 }

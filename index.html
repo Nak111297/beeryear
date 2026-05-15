@@ -103,7 +103,7 @@
             <article>
               <span>Litros tomados</span>
               <strong id="litersTotal">0.0 L</strong>
-              <small>Asumiendo 1 birra = 1/3 L</small>
+              <small>Calculado por presentación</small>
             </article>
             <article>
               <span>Equivalente</span>
@@ -242,13 +242,30 @@
             <span>Amigo</span>
             <select id="personSelect" required></select>
           </label>
-          <label>
-            <span>Fecha</span>
-            <input id="drinkDate" type="date" required />
+          <label class="now-field">
+            <span>Cuándo</span>
+            <div class="now-pill">
+              <strong>Ahora</strong>
+              <small id="nowStamp">Guardando hora exacta</small>
+            </div>
           </label>
           <label>
             <span>Cerveza</span>
-            <input id="beerName" type="text" maxlength="32" placeholder="Gallo, Modelo, Corona..." />
+            <input id="beerName" type="text" maxlength="32" list="beerOptions" placeholder="Elegí o escribí..." />
+            <datalist id="beerOptions">
+              <option value="Gallo"></option>
+              <option value="Cabro"></option>
+              <option value="Modelo Especial"></option>
+              <option value="Negra Modelo"></option>
+              <option value="Corona"></option>
+              <option value="Stella Artois"></option>
+              <option value="Heineken"></option>
+              <option value="Toña"></option>
+              <option value="Pilsener"></option>
+              <option value="Victoria"></option>
+              <option value="Dorada Draft"></option>
+              <option value="Artesanal"></option>
+            </datalist>
           </label>
           <label>
             <span>Tipo</span>
@@ -264,11 +281,11 @@
           <label>
             <span>Presentación</span>
             <select id="beerFormat">
-              <option value="Lata">Lata</option>
-              <option value="Botella">Botella</option>
-              <option value="Grifo">Grifo</option>
-              <option value="Caguama">Caguama</option>
-              <option value="Otra">Otra</option>
+              <option value="Lata">Lata · 355 ml</option>
+              <option value="Botella">Botella · 355 ml</option>
+              <option value="Grifo">Grifo · 473 ml</option>
+              <option value="Caguama">Caguama · 940 ml</option>
+              <option value="Otra">Otra · 333 ml</option>
             </select>
           </label>
           <label>

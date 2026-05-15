@@ -20,6 +20,13 @@ const LEGACY_STORAGE_KEY = "beer-year-tracker-v1";
 const GROUP_ID = "beeryear";
 const MONTHS = ["Ene", "Feb", "Mar", "Abr", "May", "Jun", "Jul", "Ago", "Sep", "Oct", "Nov", "Dic"];
 const COLORS = ["#f59f00", "#4f8a55", "#a23e48", "#2563eb", "#7c3aed", "#0f766e"];
+const FORMAT_LITERS = {
+  Lata: 0.355,
+  Botella: 0.355,
+  Grifo: 0.473,
+  Caguama: 0.94,
+  Otra: 0.333,
+};
 const firebaseConfig = {
   apiKey: "AIzaSyC4gsYzlTYIyDpebjXp8IHQzZSsEgcCi84",
   authDomain: "beeryear-cfa32.firebaseapp.com",
@@ -65,7 +72,7 @@ const els = {
   monthChart: document.querySelector("#monthChart"),
   drinkForm: document.querySelector("#drinkForm"),
   personSelect: document.querySelector("#personSelect"),
-  drinkDate: document.querySelector("#drinkDate"),
+  nowStamp: document.querySelector("#nowStamp"),
   beerName: document.querySelector("#beerName"),
   beerType: document.querySelector("#beerType"),
   beerFormat: document.querySelector("#beerFormat"),
@@ -154,6 +161,7 @@ function normalizeDrinks(drinks) {
       beerName: drink.beerName ? String(drink.beerName) : "",
       type: drink.type ? String(drink.type) : "Lager",
       format: drink.format ? String(drink.format) : "Lata",
+      liters: Number(drink.liters) || getFormatLiters(drink.format || "Lata"),
       mood: drink.mood ? String(drink.mood) : "Con amigos",
       companionPersonId: drink.companionPersonId ? String(drink.companionPersonId) : "",
       note: drink.note ? String(drink.note) : "",
@@ -171,7 +179,14 @@ function showFirebaseError(error) {
 }
 
 function todayISO() {
-  return new Date().toISOString().slice(0, 10);
+  return localDateISO();
+}
+
+function localDateISO(date = new Date()) {
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, "0");
+  const day = String(date.getDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
 }
 
 function getYear() {
@@ -197,6 +212,43 @@ function formatDate(dateString) {
     day: "numeric",
     month: "short",
   }).format(parseLocalDate(dateString));
+}
+
+function formatDateTime(drink) {
+  const createdAt = drink.createdAt ? new Date(drink.createdAt) : parseLocalDate(drink.date);
+  if (Number.isNaN(createdAt.getTime())) return formatDate(drink.date);
+
+  return new Intl.DateTimeFormat("es-GT", {
+    day: "numeric",
+    month: "short",
+    hour: "numeric",
+    minute: "2-digit",
+  }).format(createdAt);
+}
+
+function updateNowStamp() {
+  els.nowStamp.textContent = new Intl.DateTimeFormat("es-GT", {
+    day: "numeric",
+    month: "short",
+    hour: "numeric",
+    minute: "2-digit",
+  }).format(new Date());
+}
+
+function formatLiters(value) {
+  return Number(value).toFixed(2).replace(/\.?0+$/, "");
+}
+
+function getFormatLiters(format) {
+  return FORMAT_LITERS[format] || FORMAT_LITERS.Otra;
+}
+
+function drinkLiters(drink) {
+  return Number(drink.liters) || getFormatLiters(drink.format) * (Number(drink.count) || 1);
+}
+
+function totalLiters(drinks) {
+  return drinks.reduce((sum, drink) => sum + drinkLiters(drink), 0);
 }
 
 async function seedInitialDataIfEmpty() {
@@ -226,6 +278,7 @@ async function seedInitialDataIfEmpty() {
       beerName: drink.beerName,
       type: drink.type,
       format: drink.format,
+      liters: drink.liters,
       mood: drink.mood,
       companionPersonId: drink.companionPersonId,
       note: drink.note,
@@ -495,7 +548,7 @@ function renderMonthChart() {
 function renderStats() {
   const drinks = yearDrinks();
   const total = sumDrinks(drinks);
-  const liters = total / 3;
+  const liters = totalLiters(drinks);
   const activeDays = getDayTotals(drinks).size;
   const entries = drinks.length;
   const topType = topBy(drinks, "type");
@@ -529,7 +582,7 @@ function renderStats() {
     .join("");
 
   els.litersTotal.textContent = `${liters.toFixed(1)} L`;
-  els.sixPackEquivalent.textContent = `${(total / 6).toFixed(1)}`;
+  els.sixPackEquivalent.textContent = `${(liters / (FORMAT_LITERS.Lata * 6)).toFixed(1)}`;
   els.dailyPace.textContent = `${(activeDays ? liters / activeDays : 0).toFixed(2)} L`;
   renderBreakdownChart(els.formatChart, totalsByKey(drinks, "format"));
   renderBreakdownChart(els.typeChart, totalsByKey(drinks, "type"));
@@ -644,19 +697,19 @@ function renderActivity() {
 
   recent.forEach((drink) => {
     const person = getPerson(drink.personId);
-    if (!person) return;
 
     const row = document.createElement("div");
     row.className = "activity-row";
     const beerName = drink.beerName || drink.type || "Cerveza";
     const companion = getPerson(drink.companionPersonId);
-    const details = [drink.format, drink.mood, companion ? `con ${companion.name}` : ""]
+    const volume = `${formatLiters(drinkLiters(drink))} L`;
+    const details = [drink.format, volume, drink.mood, companion ? `con ${companion.name}` : ""]
       .filter(Boolean)
       .join(" · ");
     row.innerHTML = `
       <div>
-        <strong>${escapeHTML(person.name)} · ${escapeHTML(beerName)}</strong>
-        <span>${formatDate(drink.date)}${details ? ` · ${escapeHTML(details)}` : ""}${drink.note ? ` · ${escapeHTML(drink.note)}` : ""}</span>
+        <strong>${escapeHTML(person?.name || "Jugador eliminado")} · ${escapeHTML(beerName)}</strong>
+        <span>${formatDateTime(drink)}${details ? ` · ${escapeHTML(details)}` : ""}${drink.note ? ` · ${escapeHTML(drink.note)}` : ""}</span>
       </div>
       <div class="activity-actions">
         <span class="beer-badge">${drink.count}</span>
@@ -684,19 +737,28 @@ async function addDrink(event) {
   if (!state.people.length) return;
   const button = els.drinkForm.querySelector(".primary-button");
   button.disabled = true;
+  const now = new Date();
+  const format = els.beerFormat.value;
+  const liters = getFormatLiters(format);
+  const selectedPersonId = els.personSelect.value || state.people[0]?.id;
+  if (!selectedPersonId) {
+    button.disabled = false;
+    return;
+  }
 
   try {
     await addDoc(drinksRef, {
-      personId: els.personSelect.value,
+      personId: selectedPersonId,
       count: 1,
-      date: els.drinkDate.value,
+      date: localDateISO(now),
       beerName: els.beerName.value.trim(),
       type: els.beerType.value,
-      format: els.beerFormat.value,
+      format,
+      liters,
       mood: els.drinkMood.value,
       companionPersonId: els.drinkCompanionPerson.value,
       note: els.drinkNote.value.trim(),
-      createdAt: new Date().toISOString(),
+      createdAt: now.toISOString(),
       serverCreatedAt: serverTimestamp(),
     });
 
@@ -829,6 +891,7 @@ function importData(event) {
           beerName: drink.beerName,
           type: drink.type,
           format: drink.format,
+          liters: drink.liters,
           mood: drink.mood,
           companionPersonId: drink.companionPersonId,
           note: drink.note,
@@ -897,7 +960,7 @@ els.navItems.forEach((button) => {
   button.addEventListener("click", () => setActiveView(button.dataset.nav));
 });
 els.openBeerModal.addEventListener("click", () => {
-  els.drinkDate.value = todayISO();
+  updateNowStamp();
   renderCompanionSelect();
   openModal(els.beerModal);
   setTimeout(() => els.beerName.focus(), 80);
@@ -906,7 +969,7 @@ els.friendsMenuBtn.addEventListener("click", () => openModal(els.friendsPanel));
 els.exportBtn.addEventListener("click", exportData);
 els.importFile.addEventListener("change", importData);
 
-els.drinkDate.value = todayISO();
+updateNowStamp();
 els.friendColor.value = COLORS[state.people.length % COLORS.length];
 render();
 startFirebase();
