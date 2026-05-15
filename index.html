@@ -1,0 +1,369 @@
+<!doctype html>
+<html lang="es">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Beer Year</title>
+    <link rel="stylesheet" href="styles.css" />
+  </head>
+  <body>
+    <main class="app-shell">
+      <header class="topbar">
+        <div class="brand-lockup">
+          <div class="beer-mark" aria-hidden="true">
+            <span class="foam one"></span>
+            <span class="foam two"></span>
+            <span class="foam three"></span>
+            <span class="glass">
+              <span class="beer-fill"></span>
+            </span>
+          </div>
+          <div>
+            <p class="eyebrow">Temporada <span id="currentYear"></span></p>
+            <h1>Beer Year</h1>
+          </div>
+        </div>
+        <div class="toolbar">
+          <button class="icon-button" id="friendsMenuBtn" type="button" aria-label="Administrar amigos" title="Administrar amigos">
+            <svg viewBox="0 0 24 24" aria-hidden="true">
+              <path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2" />
+              <circle cx="9" cy="7" r="4" />
+              <path d="M22 21v-2a4 4 0 0 0-3-3.87" />
+              <path d="M16 3.13a4 4 0 0 1 0 7.75" />
+            </svg>
+          </button>
+          <button class="icon-button" id="exportBtn" type="button" aria-label="Exportar datos" title="Exportar datos">
+            <svg viewBox="0 0 24 24" aria-hidden="true">
+              <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+              <path d="M7 10l5 5 5-5" />
+              <path d="M12 15V3" />
+            </svg>
+          </button>
+          <label class="icon-button file-button" aria-label="Importar datos" title="Importar datos">
+            <input id="importFile" type="file" accept="application/json" />
+            <svg viewBox="0 0 24 24" aria-hidden="true">
+              <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+              <path d="M17 8l-5-5-5 5" />
+              <path d="M12 3v12" />
+            </svg>
+          </label>
+        </div>
+      </header>
+
+      <section class="app-view active" id="homeView" data-view="home">
+        <section class="hero-grid" aria-label="Resumen">
+          <article class="score-panel main-score">
+            <div class="score-copy">
+              <span>Total del año</span>
+              <strong id="yearTotal">0</strong>
+              <small id="paceStat">Ritmo: 0 al cierre</small>
+            </div>
+            <div class="mini-chart" id="monthChart" aria-label="Cervezas por mes"></div>
+          </article>
+
+          <article class="score-panel">
+            <span>Campeón actual</span>
+            <strong id="leaderName">Sin datos</strong>
+            <small id="leaderStat">0 cervezas</small>
+          </article>
+
+          <article class="score-panel">
+            <span>Día más duro</span>
+            <strong id="biggestDay">Sin datos</strong>
+            <small id="biggestDayStat">0 cervezas</small>
+          </article>
+        </section>
+
+        <section class="panel leaderboard-panel" aria-labelledby="leaderboardTitle">
+          <div class="section-heading">
+            <div>
+              <p class="eyebrow">Ranking</p>
+              <h2 id="leaderboardTitle">Leaderboard</h2>
+            </div>
+            <select id="periodSelect" aria-label="Periodo">
+              <option value="year">Año</option>
+              <option value="month">Mes</option>
+              <option value="all">Todo</option>
+            </select>
+          </div>
+          <div id="leaderboard" class="leaderboard"></div>
+        </section>
+      </section>
+
+      <section class="app-view" id="statsView" data-view="stats">
+        <section class="panel stats-page-panel" aria-labelledby="statsTitle">
+          <div class="section-heading stats-page-heading">
+            <div>
+              <p class="eyebrow">Stats</p>
+              <h2 id="statsTitle">La cuenta del año</h2>
+            </div>
+          </div>
+
+          <div class="stats-hero">
+            <article>
+              <span>Litros tomados</span>
+              <strong id="litersTotal">0.0 L</strong>
+              <small>Asumiendo 1 birra = 1/3 L</small>
+            </article>
+            <article>
+              <span>Equivalente</span>
+              <strong id="sixPackEquivalent">0</strong>
+              <small>six packs aproximados</small>
+            </article>
+            <article>
+              <span>Ritmo diario</span>
+              <strong id="dailyPace">0.00 L</strong>
+              <small>por día activo</small>
+            </article>
+          </div>
+
+          <div class="stats-grid" id="statsGrid"></div>
+
+          <section class="chart-grid" aria-label="Gráficas">
+            <article class="chart-card wide-chart">
+              <div class="chart-heading">
+                <span>Temporada</span>
+                <strong>Cervezas por mes</strong>
+              </div>
+              <div class="stats-month-chart" id="statsMonthChart"></div>
+            </article>
+
+            <article class="chart-card">
+              <div class="chart-heading">
+                <span>Formato</span>
+                <strong>Presentación top</strong>
+              </div>
+              <div class="breakdown-chart" id="formatChart"></div>
+            </article>
+
+            <article class="chart-card">
+              <div class="chart-heading">
+                <span>Estilo</span>
+                <strong>Tipos de cerveza</strong>
+              </div>
+              <div class="breakdown-chart" id="typeChart"></div>
+            </article>
+          </section>
+
+          <div class="companion-board" aria-label="Chelas por acompañante">
+            <div class="companion-toolbar">
+              <div>
+                <span>Compañeros de mesa</span>
+                <strong>Chelas con cada amigo</strong>
+              </div>
+              <select id="companionPersonFilter" aria-label="Jugador"></select>
+            </div>
+            <div class="companion-list" id="companionBreakdown"></div>
+          </div>
+        </section>
+      </section>
+
+      <section class="app-view" id="historyView" data-view="history">
+        <section class="panel activity-panel" aria-labelledby="activityTitle">
+          <div class="section-heading compact-heading">
+            <div>
+              <p class="eyebrow">Historial</p>
+              <h2 id="activityTitle">Últimas birras</h2>
+            </div>
+          </div>
+          <div class="activity-list" id="activityList"></div>
+        </section>
+      </section>
+    </main>
+
+    <nav class="bottom-nav" aria-label="Navegación principal">
+      <button class="nav-item active" type="button" data-nav="home" aria-label="Inicio">
+        <svg viewBox="0 0 24 24" aria-hidden="true">
+          <path d="M3 10.5 12 3l9 7.5" />
+          <path d="M5 10v10h14V10" />
+        </svg>
+        <span>Inicio</span>
+      </button>
+      <button class="nav-item" type="button" data-nav="stats" aria-label="Stats">
+        <svg viewBox="0 0 24 24" aria-hidden="true">
+          <path d="M4 19V5" />
+          <path d="M4 19h16" />
+          <path d="M8 16v-5" />
+          <path d="M12 16V8" />
+          <path d="M16 16v-8" />
+        </svg>
+        <span>Stats</span>
+      </button>
+      <button class="nav-item" type="button" data-nav="history" aria-label="Historial">
+        <svg viewBox="0 0 24 24" aria-hidden="true">
+          <path d="M3 12a9 9 0 1 0 3-6.7" />
+          <path d="M3 3v6h6" />
+          <path d="M12 7v5l3 2" />
+        </svg>
+        <span>Birras</span>
+      </button>
+    </nav>
+
+    <button class="fab-add-beer" id="openBeerModal" type="button" aria-label="Abrir registro de birra">
+      <svg viewBox="0 0 24 24" aria-hidden="true">
+        <path d="M12 5v14" />
+        <path d="M5 12h14" />
+      </svg>
+      <span>Birra</span>
+    </button>
+
+    <div class="modal-backdrop" id="beerModal" aria-hidden="true">
+      <section class="modal-card beer-sheet" role="dialog" aria-modal="true" aria-labelledby="trackerTitle">
+        <div class="sheet-header">
+          <div>
+            <p class="eyebrow">Registro</p>
+            <h2 id="trackerTitle">Subir birra</h2>
+          </div>
+          <button class="icon-button sheet-close" type="button" data-close-modal aria-label="Cerrar">
+            <svg viewBox="0 0 24 24" aria-hidden="true">
+              <path d="M18 6 6 18" />
+              <path d="m6 6 12 12" />
+            </svg>
+          </button>
+        </div>
+
+        <div class="reward-strip" aria-live="polite">
+          <div>
+            <span>Hoy</span>
+            <strong id="todayCount">0</strong>
+          </div>
+          <div>
+            <span>Próxima meta</span>
+            <strong id="nextMilestone">10</strong>
+          </div>
+          <div>
+            <span>Faltan</span>
+            <strong id="milestoneLeft">10</strong>
+          </div>
+        </div>
+
+        <form id="drinkForm" class="drink-form">
+          <label>
+            <span>Amigo</span>
+            <select id="personSelect" required></select>
+          </label>
+          <label>
+            <span>Fecha</span>
+            <input id="drinkDate" type="date" required />
+          </label>
+          <label>
+            <span>Cerveza</span>
+            <input id="beerName" type="text" maxlength="32" placeholder="Gallo, Modelo, Corona..." />
+          </label>
+          <label>
+            <span>Tipo</span>
+            <select id="beerType">
+              <option value="Lager">Lager</option>
+              <option value="IPA">IPA</option>
+              <option value="Stout">Stout</option>
+              <option value="Artesanal">Artesanal</option>
+              <option value="Light">Light</option>
+              <option value="Otra">Otra</option>
+            </select>
+          </label>
+          <label>
+            <span>Presentación</span>
+            <select id="beerFormat">
+              <option value="Lata">Lata</option>
+              <option value="Botella">Botella</option>
+              <option value="Grifo">Grifo</option>
+              <option value="Caguama">Caguama</option>
+              <option value="Otra">Otra</option>
+            </select>
+          </label>
+          <label>
+            <span>Plan</span>
+            <select id="drinkMood">
+              <option value="Con amigos">Con amigos</option>
+              <option value="Solo">Solo</option>
+              <option value="Con pareja">Con pareja</option>
+              <option value="Partido">Partido</option>
+              <option value="Evento">Evento</option>
+              <option value="Otro">Otro</option>
+            </select>
+          </label>
+          <label>
+            <span>Con quién</span>
+            <select id="drinkCompanionPerson"></select>
+          </label>
+          <label class="wide-field">
+            <span>Nota</span>
+            <input id="drinkNote" type="text" maxlength="64" placeholder="Bar, partido, playa..." />
+          </label>
+          <button class="primary-button" type="submit">
+            <svg viewBox="0 0 24 24" aria-hidden="true">
+              <path d="M12 5v14" />
+              <path d="M5 12h14" />
+            </svg>
+            Sumar birra
+          </button>
+        </form>
+      </section>
+    </div>
+
+    <div class="modal-backdrop side-backdrop" id="friendsPanel" aria-hidden="true">
+      <aside class="side-panel" role="dialog" aria-modal="true" aria-labelledby="friendsTitle">
+        <div class="sheet-header">
+          <div>
+            <p class="eyebrow">Equipo</p>
+            <h2 id="friendsTitle">Amigos</h2>
+          </div>
+          <button class="icon-button sheet-close" type="button" data-close-modal aria-label="Cerrar">
+            <svg viewBox="0 0 24 24" aria-hidden="true">
+              <path d="M18 6 6 18" />
+              <path d="m6 6 12 12" />
+            </svg>
+          </button>
+        </div>
+        <form id="friendForm" class="friend-form">
+          <input id="friendName" type="text" maxlength="24" placeholder="Nombre" required />
+          <input id="friendColor" type="color" value="#f59f00" aria-label="Color" />
+          <button class="secondary-button" type="submit">
+            <svg viewBox="0 0 24 24" aria-hidden="true">
+              <path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2" />
+              <circle cx="9" cy="7" r="4" />
+              <path d="M19 8v6" />
+              <path d="M22 11h-6" />
+            </svg>
+            Agregar
+          </button>
+        </form>
+        <div class="friend-list" id="friendList"></div>
+      </aside>
+    </div>
+
+    <template id="emptyStateTemplate">
+      <div class="empty-state">
+        <strong>Sin registros todavía</strong>
+        <span>La primera birra abre el marcador.</span>
+      </div>
+    </template>
+
+    <div id="rewardToast" class="reward-toast" role="status" aria-live="polite">
+      <span>+1</span>
+      <strong>Birra sumada</strong>
+    </div>
+
+    <div id="cheersOverlay" class="cheers-overlay" aria-hidden="true">
+      <div class="cheers-card">
+        <div class="cheers-glasses" aria-hidden="true">
+          <span class="cheers-glass left">
+            <span class="cheers-foam"></span>
+            <span class="cheers-beer"></span>
+          </span>
+          <span class="cheers-splash one"></span>
+          <span class="cheers-splash two"></span>
+          <span class="cheers-splash three"></span>
+          <span class="cheers-glass right">
+            <span class="cheers-foam"></span>
+            <span class="cheers-beer"></span>
+          </span>
+        </div>
+        <strong>Salud</strong>
+        <span>Birra sumada al marcador</span>
+      </div>
+    </div>
+
+    <script src="app.js"></script>
+  </body>
+</html>
