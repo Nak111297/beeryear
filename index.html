@@ -58,7 +58,17 @@
               <strong id="yearTotal">0</strong>
               <small id="paceStat">Ritmo: 0 al cierre</small>
             </div>
-            <div class="mini-chart" id="monthChart" aria-label="Cervezas por mes"></div>
+            <div class="main-chart-panel">
+              <div class="chart-switcher">
+                <span id="mainChartLabel">Distribución por mes</span>
+                <div class="segmented-control mini-segmented" id="mainChartRange" role="group" aria-label="Detalle de gráfica principal">
+                  <button class="active" type="button" data-main-chart="month">Mes</button>
+                  <button type="button" data-main-chart="week">Semana</button>
+                  <button type="button" data-main-chart="day">Día</button>
+                </div>
+              </div>
+              <div class="mini-chart" id="monthChart" aria-label="Distribución de cervezas del año"></div>
+            </div>
           </article>
 
           <article class="score-panel">

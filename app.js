@@ -65,6 +65,7 @@ const uiState = {
   expandedLeaderId: "",
   statsPersonId: "all",
   companionPersonId: "",
+  mainChartRange: "month",
 };
 const connectionState = {
   peopleReady: false,
@@ -81,6 +82,8 @@ const els = {
   biggestDay: document.querySelector("#biggestDay"),
   biggestDayStat: document.querySelector("#biggestDayStat"),
   monthChart: document.querySelector("#monthChart"),
+  mainChartRange: document.querySelector("#mainChartRange"),
+  mainChartLabel: document.querySelector("#mainChartLabel"),
   drinkForm: document.querySelector("#drinkForm"),
   personSelect: document.querySelector("#personSelect"),
   nowStamp: document.querySelector("#nowStamp"),
@@ -253,6 +256,12 @@ function isSameYear(dateString, year = getYear()) {
 function isSameMonth(dateString, ref = new Date()) {
   const date = parseLocalDate(dateString);
   return date.getFullYear() === ref.getFullYear() && date.getMonth() === ref.getMonth();
+}
+
+function dayOfYear(dateString) {
+  const date = parseLocalDate(dateString);
+  const start = new Date(date.getFullYear(), 0, 1);
+  return Math.floor((date - start) / 86400000);
 }
 
 function formatDate(dateString) {
@@ -681,27 +690,92 @@ function renderRewardStats() {
 }
 
 function renderMonthChart() {
-  els.monthChart.innerHTML = monthChartMarkup(yearDrinks());
+  const { label, bars } = mainChartData(yearDrinks(), uiState.mainChartRange);
+  els.mainChartLabel.textContent = label;
+  els.monthChart.dataset.range = uiState.mainChartRange;
+  els.monthChart.innerHTML = barChartMarkup(bars);
 }
 
 function renderStatsMonthChart(drinks) {
-  els.statsMonthChart.innerHTML = monthChartMarkup(drinks);
+  els.statsMonthChart.innerHTML = barChartMarkup(monthChartBars(drinks));
 }
 
-function monthChartMarkup(drinks) {
+function monthChartBars(drinks) {
   const totals = Array.from({ length: 12 }, () => 0);
   drinks.forEach((drink) => {
     totals[parseLocalDate(drink.date).getMonth()] += Number(drink.count);
   });
 
-  const max = Math.max(1, ...totals);
-  return totals
-    .map((total, index) => {
-      const height = Math.max(6, Math.round((total / max) * 100));
+  return totals.map((total, index) => ({
+    label: MONTHS[index],
+    total,
+    title: `${MONTHS[index]}: ${total}`,
+  }));
+}
+
+function weekChartBars(drinks) {
+  const weeks = Array.from({ length: 53 }, (_, index) => ({
+    label: `S${index + 1}`,
+    total: 0,
+    title: `Semana ${index + 1}: 0`,
+  }));
+  drinks.forEach((drink) => {
+    const weekIndex = Math.min(52, Math.floor(dayOfYear(drink.date) / 7));
+    weeks[weekIndex].total += Number(drink.count);
+  });
+  return weeks.map((week, index) => ({
+    ...week,
+    title: `Semana ${index + 1}: ${week.total}`,
+  }));
+}
+
+function dayChartBars(drinks) {
+  const year = getYear();
+  const daysInYear = Math.ceil((new Date(year + 1, 0, 1) - new Date(year, 0, 1)) / 86400000);
+  const totals = Array.from({ length: daysInYear }, (_, index) => {
+    const date = new Date(year, 0, index + 1);
+    const label = date.getDate() === 1 ? MONTHS[date.getMonth()] : date.getDay() === 1 ? String(date.getDate()) : "";
+    return {
+      label,
+      total: 0,
+      title: `${formatDate(localDateISO(date))}: 0`,
+    };
+  });
+
+  drinks.forEach((drink) => {
+    const index = dayOfYear(drink.date);
+    if (!totals[index]) return;
+    totals[index].total += Number(drink.count);
+  });
+
+  return totals.map((day, index) => {
+    const date = new Date(year, 0, index + 1);
+    return {
+      ...day,
+      title: `${formatDate(localDateISO(date))}: ${day.total}`,
+    };
+  });
+}
+
+function mainChartData(drinks, range) {
+  if (range === "week") {
+    return { label: "Distribución por semana", bars: weekChartBars(drinks) };
+  }
+  if (range === "day") {
+    return { label: "Distribución diaria del año", bars: dayChartBars(drinks) };
+  }
+  return { label: "Distribución por mes", bars: monthChartBars(drinks) };
+}
+
+function barChartMarkup(bars) {
+  const max = Math.max(1, ...bars.map((bar) => bar.total));
+  return bars
+    .map((bar) => {
+      const height = Math.max(6, Math.round((bar.total / max) * 100));
       return `
-        <div class="bar-wrap" title="${MONTHS[index]}: ${total}">
+        <div class="bar-wrap" title="${escapeHTML(bar.title)}">
           <div class="bar" style="height:${height}px"></div>
-          <span class="bar-label">${MONTHS[index]}</span>
+          <span class="bar-label">${escapeHTML(bar.label)}</span>
         </div>
       `;
     })
@@ -1149,6 +1223,7 @@ document.addEventListener("click", (event) => {
   const companionNoneBtn = event.target.closest("[data-companion-none]");
   const choiceBtn = event.target.closest("[data-choice-value]");
   const periodBtn = event.target.closest("[data-period]");
+  const mainChartBtn = event.target.closest("[data-main-chart]");
   const statsPersonBtn = event.target.closest("[data-stats-person]");
   const companionFilterBtn = event.target.closest("[data-companion-filter]");
   const backdrop = event.target.classList.contains("modal-backdrop") ? event.target : null;
@@ -1190,6 +1265,13 @@ document.addEventListener("click", (event) => {
       button.classList.toggle("active", button === periodBtn);
     });
     renderLeaderboard();
+  }
+  if (mainChartBtn && els.mainChartRange.contains(mainChartBtn)) {
+    uiState.mainChartRange = mainChartBtn.dataset.mainChart;
+    els.mainChartRange.querySelectorAll("[data-main-chart]").forEach((button) => {
+      button.classList.toggle("active", button === mainChartBtn);
+    });
+    renderMonthChart();
   }
   if (statsPersonBtn && els.statsPersonFilter.contains(statsPersonBtn)) {
     uiState.statsPersonId = statsPersonBtn.dataset.statsPerson;
