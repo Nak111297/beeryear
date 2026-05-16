@@ -66,6 +66,7 @@ const uiState = {
   statsPersonId: "all",
   companionPersonId: "",
   mainChartRange: "month",
+  mainChartAnchorDate: todayISO(),
 };
 const connectionState = {
   peopleReady: false,
@@ -84,6 +85,8 @@ const els = {
   monthChart: document.querySelector("#monthChart"),
   mainChartRange: document.querySelector("#mainChartRange"),
   mainChartLabel: document.querySelector("#mainChartLabel"),
+  mainChartDate: document.querySelector("#mainChartDate"),
+  mainChartDateLabel: document.querySelector("#mainChartDateLabel"),
   drinkForm: document.querySelector("#drinkForm"),
   personSelect: document.querySelector("#personSelect"),
   nowStamp: document.querySelector("#nowStamp"),
@@ -262,6 +265,21 @@ function dayOfYear(dateString) {
   const date = parseLocalDate(dateString);
   const start = new Date(date.getFullYear(), 0, 1);
   return Math.floor((date - start) / 86400000);
+}
+
+function isSameLocalDay(dateA, dateB) {
+  return localDateISO(dateA) === localDateISO(dateB);
+}
+
+function addDays(date, days) {
+  const nextDate = new Date(date);
+  nextDate.setDate(nextDate.getDate() + days);
+  return nextDate;
+}
+
+function startOfWeek(date) {
+  const dayOffset = (date.getDay() + 6) % 7;
+  return addDays(date, -dayOffset);
 }
 
 function formatDate(dateString) {
@@ -503,7 +521,7 @@ function render() {
 
   els.currentYear.textContent = year;
   els.yearTotal.textContent = yearTotal;
-  els.paceStat.textContent = `Ritmo: ${projectedYearTotal(yearTotal)} al cierre`;
+  els.paceStat.textContent = `Proyección del año: ${projectedYearTotal(yearTotal)} birras`;
   els.leaderName.textContent = leader && leader.total > 0 ? leader.name : "Sin datos";
   els.leaderStat.textContent = `${leader?.total || 0} cervezas`;
   els.biggestDay.textContent = biggest ? formatDate(biggest[0]) : "Sin datos";
@@ -690,17 +708,28 @@ function renderRewardStats() {
 }
 
 function renderMonthChart() {
-  const { label, bars } = mainChartData(yearDrinks(), uiState.mainChartRange);
+  updateMainChartDateControl();
+  const { label, bars } = mainChartData(state.drinks, uiState.mainChartRange);
   els.mainChartLabel.textContent = label;
   els.monthChart.dataset.range = uiState.mainChartRange;
   els.monthChart.innerHTML = barChartMarkup(bars);
 }
 
 function renderStatsMonthChart(drinks) {
-  els.statsMonthChart.innerHTML = barChartMarkup(monthChartBars(drinks));
+  els.statsMonthChart.innerHTML = barChartMarkup(yearMonthChartBars(drinks));
 }
 
-function monthChartBars(drinks) {
+function updateMainChartDateControl() {
+  const labels = {
+    month: "Mes",
+    week: "Semana",
+    day: "Día",
+  };
+  els.mainChartDateLabel.textContent = labels[uiState.mainChartRange];
+  els.mainChartDate.value = uiState.mainChartAnchorDate;
+}
+
+function yearMonthChartBars(drinks) {
   const totals = Array.from({ length: 12 }, () => 0);
   drinks.forEach((drink) => {
     totals[parseLocalDate(drink.date).getMonth()] += Number(drink.count);
@@ -713,58 +742,86 @@ function monthChartBars(drinks) {
   }));
 }
 
-function weekChartBars(drinks) {
-  const weeks = Array.from({ length: 53 }, (_, index) => ({
-    label: `S${index + 1}`,
-    total: 0,
-    title: `Semana ${index + 1}: 0`,
-  }));
+function selectedMonthDayBars(drinks) {
+  const anchor = parseLocalDate(uiState.mainChartAnchorDate);
+  const year = anchor.getFullYear();
+  const month = anchor.getMonth();
+  const daysInMonth = new Date(year, month + 1, 0).getDate();
+  const totals = Array.from({ length: daysInMonth }, () => 0);
   drinks.forEach((drink) => {
-    const weekIndex = Math.min(52, Math.floor(dayOfYear(drink.date) / 7));
-    weeks[weekIndex].total += Number(drink.count);
+    const drinkDate = parseLocalDate(drink.date);
+    if (drinkDate.getFullYear() !== year || drinkDate.getMonth() !== month) return;
+    totals[drinkDate.getDate() - 1] += Number(drink.count);
   });
-  return weeks.map((week, index) => ({
-    ...week,
-    title: `Semana ${index + 1}: ${week.total}`,
+
+  return totals.map((total, index) => {
+    const date = new Date(year, month, index + 1);
+    return {
+      label: String(index + 1),
+      total,
+      title: `${formatDate(localDateISO(date))}: ${total}`,
+    };
+  });
+}
+
+function selectedWeekDayBars(drinks) {
+  const start = startOfWeek(parseLocalDate(uiState.mainChartAnchorDate));
+  const labels = ["Lun", "Mar", "Mié", "Jue", "Vie", "Sáb", "Dom"];
+  const days = Array.from({ length: 7 }, (_, index) => addDays(start, index));
+  const totals = Array.from({ length: 7 }, () => 0);
+
+  drinks.forEach((drink) => {
+    const drinkDate = parseLocalDate(drink.date);
+    const index = days.findIndex((day) => isSameLocalDay(day, drinkDate));
+    if (index === -1) return;
+    totals[index] += Number(drink.count);
+  });
+
+  return totals.map((total, index) => ({
+    label: labels[index],
+    total,
+    title: `${labels[index]} ${formatDate(localDateISO(days[index]))}: ${total}`,
   }));
 }
 
-function dayChartBars(drinks) {
-  const year = getYear();
-  const daysInYear = Math.ceil((new Date(year + 1, 0, 1) - new Date(year, 0, 1)) / 86400000);
-  const totals = Array.from({ length: daysInYear }, (_, index) => {
-    const date = new Date(year, 0, index + 1);
-    const label = date.getDate() === 1 ? MONTHS[date.getMonth()] : date.getDay() === 1 ? String(date.getDate()) : "";
-    return {
-      label,
-      total: 0,
-      title: `${formatDate(localDateISO(date))}: 0`,
-    };
-  });
+function selectedDayHourBars(drinks) {
+  const selectedDate = uiState.mainChartAnchorDate;
+  const totals = Array.from({ length: 24 }, () => 0);
 
   drinks.forEach((drink) => {
-    const index = dayOfYear(drink.date);
-    if (!totals[index]) return;
-    totals[index].total += Number(drink.count);
+    if (drink.date !== selectedDate) return;
+    const createdAt = drink.createdAt ? new Date(drink.createdAt) : parseLocalDate(drink.date);
+    const hour = Number.isNaN(createdAt.getTime()) ? 0 : createdAt.getHours();
+    totals[hour] += Number(drink.count);
   });
 
-  return totals.map((day, index) => {
-    const date = new Date(year, 0, index + 1);
-    return {
-      ...day,
-      title: `${formatDate(localDateISO(date))}: ${day.total}`,
-    };
-  });
+  return totals.map((total, hour) => ({
+    label: `${hour}`,
+    total,
+    title: `${hour}:00: ${total}`,
+  }));
 }
 
 function mainChartData(drinks, range) {
+  const anchor = parseLocalDate(uiState.mainChartAnchorDate);
   if (range === "week") {
-    return { label: "Distribución por semana", bars: weekChartBars(drinks) };
+    const start = startOfWeek(anchor);
+    const end = addDays(start, 6);
+    return {
+      label: `Días de la semana · ${formatDate(localDateISO(start))} - ${formatDate(localDateISO(end))}`,
+      bars: selectedWeekDayBars(drinks),
+    };
   }
   if (range === "day") {
-    return { label: "Distribución diaria del año", bars: dayChartBars(drinks) };
+    return {
+      label: `Horas del día · ${formatDate(uiState.mainChartAnchorDate)}`,
+      bars: selectedDayHourBars(drinks),
+    };
   }
-  return { label: "Distribución por mes", bars: monthChartBars(drinks) };
+  return {
+    label: `Días de ${MONTHS[anchor.getMonth()]} ${anchor.getFullYear()}`,
+    bars: selectedMonthDayBars(drinks),
+  };
 }
 
 function barChartMarkup(bars) {
@@ -1309,6 +1366,10 @@ els.friendsMenuBtn.addEventListener("click", () => openModal(els.friendsPanel));
 els.exportBtn.addEventListener("click", exportData);
 els.refreshBtn.addEventListener("click", refreshApp);
 els.connectionRefreshBtn.addEventListener("click", refreshApp);
+els.mainChartDate.addEventListener("change", () => {
+  uiState.mainChartAnchorDate = els.mainChartDate.value || todayISO();
+  renderMonthChart();
+});
 
 updateNowStamp();
 els.friendColor.value = COLORS[state.people.length % COLORS.length];

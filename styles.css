@@ -416,6 +416,31 @@ button svg {
   font-size: 0.72rem;
 }
 
+.chart-date-control {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  color: rgba(247, 240, 220, 0.72);
+}
+
+.chart-date-control span {
+  font-size: 0.72rem;
+  font-weight: 900;
+  text-transform: uppercase;
+}
+
+.chart-date-control input {
+  width: auto;
+  min-width: 150px;
+  height: 34px;
+  border-color: rgba(255, 244, 204, 0.22);
+  background: rgba(255, 244, 204, 0.1);
+  color: var(--chalk);
+  font-size: 0.82rem;
+  font-weight: 850;
+}
+
 .mini-chart {
   position: relative;
   z-index: 1;
@@ -432,16 +457,16 @@ button svg {
 }
 
 .mini-chart[data-range="week"] {
-  grid-template-columns: repeat(53, minmax(15px, 1fr));
+  grid-template-columns: repeat(7, minmax(24px, 1fr));
 }
 
 .mini-chart[data-range="day"] {
-  grid-template-columns: repeat(366, 13px);
-  gap: 4px;
+  grid-template-columns: repeat(24, minmax(18px, 1fr));
+  gap: 6px;
 }
 
 .mini-chart[data-range="day"] .bar-label {
-  font-size: 0.54rem;
+  font-size: 0.58rem;
 }
 
 .bar-wrap {
@@ -2391,6 +2416,15 @@ input[type="color"] {
   .chart-switcher {
     align-items: flex-start;
     flex-direction: column;
+  }
+
+  .chart-date-control {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .chart-date-control input {
+    width: 100%;
   }
 
   .mini-chart {

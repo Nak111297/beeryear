@@ -56,7 +56,7 @@
             <div class="score-copy">
               <span>Total del año</span>
               <strong id="yearTotal">0</strong>
-              <small id="paceStat">Ritmo: 0 al cierre</small>
+              <small id="paceStat">Proyección del año: 0 birras</small>
             </div>
             <div class="main-chart-panel">
               <div class="chart-switcher">
@@ -67,6 +67,10 @@
                   <button type="button" data-main-chart="day">Día</button>
                 </div>
               </div>
+              <label class="chart-date-control">
+                <span id="mainChartDateLabel">Fecha</span>
+                <input id="mainChartDate" type="date" />
+              </label>
               <div class="mini-chart" id="monthChart" aria-label="Distribución de cervezas del año"></div>
             </div>
           </article>
