@@ -60,6 +60,17 @@ const initialState = {
 };
 
 let state = { people: [...initialState.people], drinks: [] };
+const uiState = {
+  leaderboardPeriod: "year",
+  expandedLeaderId: "",
+  statsPersonId: "all",
+  companionPersonId: "",
+};
+const connectionState = {
+  peopleReady: false,
+  drinksReady: false,
+  connected: false,
+};
 
 const els = {
   currentYear: document.querySelector("#currentYear"),
@@ -75,7 +86,6 @@ const els = {
   nowStamp: document.querySelector("#nowStamp"),
   beerName: document.querySelector("#beerName"),
   beerType: document.querySelector("#beerType"),
-  beerFormat: document.querySelector("#beerFormat"),
   drinkMood: document.querySelector("#drinkMood"),
   drinkCompanionPerson: document.querySelector("#drinkCompanionPerson"),
   drinkNote: document.querySelector("#drinkNote"),
@@ -95,6 +105,7 @@ const els = {
   statsMonthChart: document.querySelector("#statsMonthChart"),
   formatChart: document.querySelector("#formatChart"),
   typeChart: document.querySelector("#typeChart"),
+  statsPersonFilter: document.querySelector("#statsPersonFilter"),
   companionPersonFilter: document.querySelector("#companionPersonFilter"),
   companionBreakdown: document.querySelector("#companionBreakdown"),
   activityList: document.querySelector("#activityList"),
@@ -105,8 +116,11 @@ const els = {
   friendsMenuBtn: document.querySelector("#friendsMenuBtn"),
   friendsPanel: document.querySelector("#friendsPanel"),
   exportBtn: document.querySelector("#exportBtn"),
-  importFile: document.querySelector("#importFile"),
+  refreshBtn: document.querySelector("#refreshBtn"),
   rewardToast: document.querySelector("#rewardToast"),
+  connectionOverlay: document.querySelector("#connectionOverlay"),
+  connectionStatus: document.querySelector("#connectionStatus"),
+  connectionRefreshBtn: document.querySelector("#connectionRefreshBtn"),
   cheersOverlay: document.querySelector("#cheersOverlay"),
   emptyStateTemplate: document.querySelector("#emptyStateTemplate"),
 };
@@ -153,29 +167,63 @@ function normalizePeople(people) {
 function normalizeDrinks(drinks) {
   return drinks
     .filter((drink) => drink?.personId && drink?.date)
-    .map((drink) => ({
-      id: String(drink.id || createId()),
-      personId: String(drink.personId),
-      count: Number(drink.count) || 1,
-      date: String(drink.date),
-      beerName: drink.beerName ? String(drink.beerName) : "",
-      type: drink.type ? String(drink.type) : "Lager",
-      format: drink.format ? String(drink.format) : "Lata",
-      liters: Number(drink.liters) || getFormatLiters(drink.format || "Lata"),
-      mood: drink.mood ? String(drink.mood) : "Con amigos",
-      companionPersonId: drink.companionPersonId ? String(drink.companionPersonId) : "",
-      note: drink.note ? String(drink.note) : "",
-      createdAt: drink.createdAt ? String(drink.createdAt) : new Date().toISOString(),
-    }));
+    .map((drink) => {
+      const companionPersonIds = normalizeCompanionIds(drink);
+      return {
+        id: String(drink.id || createId()),
+        personId: String(drink.personId),
+        count: Number(drink.count) || 1,
+        date: String(drink.date),
+        beerName: drink.beerName ? String(drink.beerName) : "",
+        type: drink.type ? String(drink.type) : "Lager",
+        format: drink.format ? String(drink.format) : "Lata",
+        liters: Number(drink.liters) || getFormatLiters(drink.format || "Lata"),
+        mood: drink.mood ? String(drink.mood) : "Con amigos",
+        companionPersonId: companionPersonIds[0] || "",
+        companionPersonIds,
+        note: drink.note ? String(drink.note) : "",
+        createdAt: drink.createdAt ? String(drink.createdAt) : new Date().toISOString(),
+      };
+    });
 }
 
 function showFirebaseError(error) {
   console.error(error);
+  setConnectionStatus(error?.code ? `Firebase: ${error.code}` : "No hay conexión con Firebase.");
+  document.body.classList.add("connection-error");
+  if (!connectionState.connected) return;
   els.rewardToast.classList.remove("show");
   void els.rewardToast.offsetWidth;
   els.rewardToast.querySelector("span").textContent = "!";
   els.rewardToast.querySelector("strong").textContent = error?.code || "Firebase no conectó";
   els.rewardToast.classList.add("show");
+}
+
+function setConnectionStatus(message) {
+  els.connectionStatus.textContent = message;
+}
+
+function markServerSnapshotReady(kind, snapshot) {
+  if (snapshot.metadata.fromCache && !connectionState[kind]) {
+    setConnectionStatus("Esperando confirmación del servidor...");
+    return false;
+  }
+
+  connectionState[kind] = true;
+  checkConnectionReady();
+  return connectionState.connected;
+}
+
+function checkConnectionReady() {
+  if (connectionState.connected || !connectionState.peopleReady || !connectionState.drinksReady) return;
+  connectionState.connected = true;
+  document.body.classList.remove("is-connecting", "connection-error");
+  document.body.classList.add("is-connected");
+  render();
+}
+
+function refreshApp() {
+  window.location.reload();
 }
 
 function todayISO() {
@@ -243,6 +291,37 @@ function getFormatLiters(format) {
   return FORMAT_LITERS[format] || FORMAT_LITERS.Otra;
 }
 
+function getSelectedFormat() {
+  return document.querySelector('input[name="beerFormat"]:checked')?.value || "Lata";
+}
+
+function normalizeCompanionIds(drink) {
+  const ids = Array.isArray(drink.companionPersonIds)
+    ? drink.companionPersonIds
+    : drink.companionPersonId
+      ? [drink.companionPersonId]
+      : [];
+  return [...new Set(ids.map((id) => String(id)).filter(Boolean))];
+}
+
+function getCompanionIds(drink) {
+  return normalizeCompanionIds(drink);
+}
+
+function getSelectedChoice(container, fallback) {
+  return container.querySelector("[data-choice-value].active")?.dataset.choiceValue || fallback;
+}
+
+function getSelectedDrinkerId() {
+  return els.personSelect.querySelector("[data-person-id].active")?.dataset.personId || state.people[0]?.id || "";
+}
+
+function getSelectedCompanionIds() {
+  return [...els.drinkCompanionPerson.querySelectorAll("[data-companion-id].active")]
+    .map((button) => button.dataset.companionId)
+    .filter(Boolean);
+}
+
 function drinkLiters(drink) {
   return Number(drink.liters) || getFormatLiters(drink.format) * (Number(drink.count) || 1);
 }
@@ -281,6 +360,7 @@ async function seedInitialDataIfEmpty() {
       liters: drink.liters,
       mood: drink.mood,
       companionPersonId: drink.companionPersonId,
+      companionPersonIds: drink.companionPersonIds,
       note: drink.note,
       createdAt: drink.createdAt,
       serverCreatedAt: serverTimestamp(),
@@ -304,6 +384,7 @@ async function seedInitialDataIfEmpty() {
 function listenToFirestore() {
   onSnapshot(
     peopleRef,
+    { includeMetadataChanges: true },
     (snapshot) => {
       state.people = snapshot.docs
         .map((personDoc) => ({
@@ -313,13 +394,14 @@ function listenToFirestore() {
         }))
         .filter((person) => person.name)
         .sort((a, b) => a.name.localeCompare(b.name));
-      render();
+      if (markServerSnapshotReady("peopleReady", snapshot)) render();
     },
     showFirebaseError,
   );
 
   onSnapshot(
     drinksRef,
+    { includeMetadataChanges: true },
     (snapshot) => {
       state.drinks = snapshot.docs
         .map((drinkDoc) => ({
@@ -327,7 +409,7 @@ function listenToFirestore() {
           ...drinkDoc.data(),
         }))
         .filter((drink) => drink.personId && drink.date);
-      render();
+      if (markServerSnapshotReady("drinksReady", snapshot)) render();
     },
     showFirebaseError,
   );
@@ -335,8 +417,11 @@ function listenToFirestore() {
 
 async function startFirebase() {
   try {
+    setConnectionStatus("Entrando al bar...");
     await signInAnonymously(auth);
+    setConnectionStatus("Buscando la base de datos real...");
     await seedInitialDataIfEmpty();
+    setConnectionStatus("Sincronizando marcador...");
     listenToFirestore();
   } catch (error) {
     showFirebaseError(error);
@@ -417,6 +502,7 @@ function render() {
 
   renderPersonSelect();
   renderCompanionSelect();
+  renderStatsPersonFilter();
   renderCompanionFilter();
   renderFriends();
   renderLeaderboard();
@@ -437,38 +523,72 @@ function projectedYearTotal(total) {
 }
 
 function renderPersonSelect() {
-  const currentValue = els.personSelect.value;
+  const currentValue = getSelectedDrinkerId();
+  const selectedId = state.people.some((person) => person.id === currentValue)
+    ? currentValue
+    : state.people[0]?.id || "";
   els.personSelect.innerHTML = state.people
-    .map((person) => `<option value="${person.id}">${escapeHTML(person.name)}</option>`)
+    .map(
+      (person) => `
+        <button class="choice-pill person-pill ${person.id === selectedId ? "active" : ""}" type="button" data-person-id="${person.id}">
+          <span class="mini-avatar" style="background:${person.color}">${escapeHTML(initials(person.name))}</span>
+          ${escapeHTML(person.name)}
+        </button>
+      `,
+    )
     .join("");
-  if (state.people.some((person) => person.id === currentValue)) {
-    els.personSelect.value = currentValue;
-  }
 }
 
 function renderCompanionSelect() {
-  const currentValue = els.drinkCompanionPerson.value;
-  const drinkerId = els.personSelect.value || state.people[0]?.id;
+  const selectedIds = getSelectedCompanionIds();
+  const drinkerId = getSelectedDrinkerId();
   const companions = state.people.filter((person) => person.id !== drinkerId);
+  const validSelectedIds = selectedIds.filter((id) => companions.some((person) => person.id === id));
   els.drinkCompanionPerson.innerHTML = [
-    `<option value="">Nadie</option>`,
-    ...companions.map((person) => `<option value="${person.id}">${escapeHTML(person.name)}</option>`),
+    `<button class="choice-pill ${validSelectedIds.length ? "" : "active"}" type="button" data-companion-none>Solo</button>`,
+    ...companions.map(
+      (person) => `
+        <button class="choice-pill person-pill ${validSelectedIds.includes(person.id) ? "active" : ""}" type="button" data-companion-id="${person.id}">
+          <span class="mini-avatar" style="background:${person.color}">${escapeHTML(initials(person.name))}</span>
+          ${escapeHTML(person.name)}
+        </button>
+      `,
+    ),
   ].join("");
-
-  if (companions.some((person) => person.id === currentValue)) {
-    els.drinkCompanionPerson.value = currentValue;
-  }
 }
 
 function renderCompanionFilter() {
-  const currentValue = els.companionPersonFilter.value;
+  const currentValue = uiState.companionPersonId || uiState.statsPersonId;
+  const selectedId = state.people.some((person) => person.id === currentValue)
+    ? currentValue
+    : state.people[0]?.id || "";
+  uiState.companionPersonId = selectedId;
   els.companionPersonFilter.innerHTML = state.people
-    .map((person) => `<option value="${person.id}">${escapeHTML(person.name)}</option>`)
+    .map(
+      (person) => `
+        <button class="${person.id === selectedId ? "active" : ""}" type="button" data-companion-filter="${person.id}">
+          ${escapeHTML(person.name)}
+        </button>
+      `,
+    )
     .join("");
+}
 
-  if (state.people.some((person) => person.id === currentValue)) {
-    els.companionPersonFilter.value = currentValue;
-  }
+function renderStatsPersonFilter() {
+  const selectedId = uiState.statsPersonId === "all" || state.people.some((person) => person.id === uiState.statsPersonId)
+    ? uiState.statsPersonId
+    : "all";
+  uiState.statsPersonId = selectedId;
+  els.statsPersonFilter.innerHTML = [
+    `<button class="${selectedId === "all" ? "active" : ""}" type="button" data-stats-person="all">Todos</button>`,
+    ...state.people.map(
+      (person) => `
+        <button class="${person.id === selectedId ? "active" : ""}" type="button" data-stats-person="${person.id}">
+          ${escapeHTML(person.name)}
+        </button>
+      `,
+    ),
+  ].join("");
 }
 
 function renderFriends() {
@@ -488,48 +608,94 @@ function renderFriends() {
 }
 
 function renderLeaderboard() {
-  const totals = totalsByPerson(els.periodSelect.value);
+  const period = uiState.leaderboardPeriod;
+  const filter = drinkFilter(period);
+  const totals = totalsByPerson(period);
   const max = Math.max(1, ...totals.map((person) => person.total));
   els.leaderboard.innerHTML = "";
 
   totals.forEach((person, index) => {
     const row = document.createElement("div");
-    row.className = "leader-row";
+    row.className = "leader-card";
     row.style.setProperty("--leader-width", `${Math.max(5, (person.total / max) * 100)}%`);
+    const expanded = uiState.expandedLeaderId === person.id;
+    const personDrinks = state.drinks
+      .filter((drink) => drink.personId === person.id && filter(drink))
+      .sort((a, b) => `${b.date}-${b.createdAt}`.localeCompare(`${a.date}-${a.createdAt}`));
+    const visibleDrinks = personDrinks.slice(0, 12);
     row.innerHTML = `
-      <div class="rank">#${index + 1}</div>
-      <div class="leader-info">
-        <strong>${escapeHTML(person.name)}</strong>
-        <span>${person.sessions} subidas registradas</span>
-      </div>
-      <div class="leader-total">
-        <strong>${person.total}</strong>
-        <span>cervezas</span>
-      </div>
+      <button class="leader-row" type="button" data-toggle-leader="${person.id}" aria-expanded="${expanded}">
+        <div class="rank">#${index + 1}</div>
+        <div class="leader-info">
+          <strong>${escapeHTML(person.name)}</strong>
+          <span>${person.sessions} subidas registradas · tocar para ver chelas</span>
+        </div>
+        <div class="leader-total">
+          <strong>${person.total}</strong>
+          <span>cervezas</span>
+        </div>
+      </button>
+      ${
+        expanded
+          ? `<div class="leader-drinks">
+              ${
+                visibleDrinks.length
+                  ? visibleDrinks.map((drink) => leaderDrinkMarkup(drink)).join("")
+                  : `<div class="leader-drink empty-leader-drink">Sin birras en este periodo.</div>`
+              }
+              ${
+                personDrinks.length > visibleDrinks.length
+                  ? `<div class="leader-more">+${personDrinks.length - visibleDrinks.length} más en este periodo</div>`
+                  : ""
+              }
+            </div>`
+          : ""
+      }
     `;
     els.leaderboard.append(row);
   });
+}
+
+function leaderDrinkMarkup(drink) {
+  const beerName = drink.beerName || drink.type || "Cerveza";
+  const companions = companionNames(drink);
+  const details = [formatDateTime(drink), drink.format, `${formatLiters(drinkLiters(drink))} L`, companions]
+    .filter(Boolean)
+    .join(" · ");
+  return `
+    <div class="leader-drink">
+      <strong>${escapeHTML(beerName)}</strong>
+      <span>${escapeHTML(details)}</span>
+    </div>
+  `;
 }
 
 function renderRewardStats() {
   const today = todayISO();
   const todayTotal = sumDrinks(state.drinks.filter((drink) => drink.date === today));
   const yearTotal = sumDrinks(yearDrinks());
-  const nextMilestone = Math.max(10, Math.ceil((yearTotal + 1) / 10) * 10);
 
   els.todayCount.textContent = todayTotal;
-  els.nextMilestone.textContent = nextMilestone;
-  els.milestoneLeft.textContent = Math.max(0, nextMilestone - yearTotal);
+  els.nextMilestone.textContent = yearTotal;
+  els.milestoneLeft.textContent = projectedYearTotal(yearTotal);
 }
 
 function renderMonthChart() {
+  els.monthChart.innerHTML = monthChartMarkup(yearDrinks());
+}
+
+function renderStatsMonthChart(drinks) {
+  els.statsMonthChart.innerHTML = monthChartMarkup(drinks);
+}
+
+function monthChartMarkup(drinks) {
   const totals = Array.from({ length: 12 }, () => 0);
-  yearDrinks().forEach((drink) => {
+  drinks.forEach((drink) => {
     totals[parseLocalDate(drink.date).getMonth()] += Number(drink.count);
   });
 
   const max = Math.max(1, ...totals);
-  const markup = totals
+  return totals
     .map((total, index) => {
       const height = Math.max(6, Math.round((total / max) * 100));
       return `
@@ -540,13 +706,10 @@ function renderMonthChart() {
       `;
     })
     .join("");
-
-  els.monthChart.innerHTML = markup;
-  els.statsMonthChart.innerHTML = markup;
 }
 
 function renderStats() {
-  const drinks = yearDrinks();
+  const drinks = getStatsDrinks();
   const total = sumDrinks(drinks);
   const liters = totalLiters(drinks);
   const activeDays = getDayTotals(drinks).size;
@@ -555,10 +718,11 @@ function renderStats() {
   const topBeer = topBy(drinks, "beerName");
   const topFormat = topBy(drinks, "format");
   const topPlan = topBy(drinks, "mood");
-  const accompanied = drinks.filter((drink) => drink.companionPersonId);
-  const topCompanionId = topBy(drinks, "companionPersonId");
+  const accompanied = drinks.filter((drink) => getCompanionIds(drink).length);
+  const topCompanionId = topCompanionByDrinks(drinks);
   const topCompanion = getPerson(topCompanionId);
   const topFriend = totalsByPerson("year")[0];
+  const selectedPerson = getPerson(uiState.statsPersonId);
 
   const stats = [
     ["Cerveza top", topBeer || "Sin datos"],
@@ -567,7 +731,12 @@ function renderStats() {
     ["Partner top", topCompanion?.name || "Sin datos"],
     ["Tipo top", topType || "Sin datos"],
     ["Plan top", topPlan || "Sin datos"],
-    ["MVP", topFriend?.total ? topFriend.name : "Sin datos"],
+    [
+      uiState.statsPersonId === "all" ? "MVP" : "Jugador",
+      uiState.statsPersonId === "all"
+        ? topFriend?.total ? topFriend.name : "Sin datos"
+        : selectedPerson?.name || "Sin datos",
+    ],
   ];
 
   els.statsGrid.innerHTML = stats
@@ -584,8 +753,15 @@ function renderStats() {
   els.litersTotal.textContent = `${liters.toFixed(1)} L`;
   els.sixPackEquivalent.textContent = `${(liters / (FORMAT_LITERS.Lata * 6)).toFixed(1)}`;
   els.dailyPace.textContent = `${(activeDays ? liters / activeDays : 0).toFixed(2)} L`;
+  renderStatsMonthChart(drinks);
   renderBreakdownChart(els.formatChart, totalsByKey(drinks, "format"));
   renderBreakdownChart(els.typeChart, totalsByKey(drinks, "type"));
+}
+
+function getStatsDrinks() {
+  const drinks = yearDrinks();
+  if (uiState.statsPersonId === "all") return drinks;
+  return drinks.filter((drink) => drink.personId === uiState.statsPersonId);
 }
 
 function totalsByKey(items, key) {
@@ -594,6 +770,17 @@ function totalsByKey(items, key) {
     map.set(value, (map.get(value) || 0) + Number(item.count));
     return map;
   }, new Map()).entries()].sort((a, b) => b[1] - a[1]);
+}
+
+function topCompanionByDrinks(drinks) {
+  const counts = drinks.reduce((map, drink) => {
+    getCompanionIds(drink).forEach((id) => {
+      map.set(id, (map.get(id) || 0) + Number(drink.count));
+    });
+    return map;
+  }, new Map());
+
+  return [...counts.entries()].sort((a, b) => b[1] - a[1])[0]?.[0];
 }
 
 function renderBreakdownChart(container, rows) {
@@ -619,17 +806,17 @@ function renderBreakdownChart(container, rows) {
 }
 
 function renderCompanionBreakdown() {
-  const selectedId = els.companionPersonFilter.value || state.people[0]?.id;
+  const selectedId = uiState.companionPersonId || state.people[0]?.id;
   const selectedPerson = getPerson(selectedId);
   const drinks = yearDrinks().filter((drink) => drink.personId === selectedId);
   const friends = state.people.filter((person) => person.id !== selectedId);
   const max = Math.max(
     1,
     ...friends.map((friend) =>
-      sumDrinks(drinks.filter((drink) => drink.companionPersonId === friend.id)),
+      sumDrinks(drinks.filter((drink) => getCompanionIds(drink).includes(friend.id))),
     ),
   );
-  const soloTotal = sumDrinks(drinks.filter((drink) => !drink.companionPersonId));
+  const soloTotal = sumDrinks(drinks.filter((drink) => !getCompanionIds(drink).length));
 
   if (!selectedPerson) {
     els.companionBreakdown.innerHTML = emptyCompanionState("Agregá amigos para ver este breakdown.");
@@ -643,7 +830,7 @@ function renderCompanionBreakdown() {
 
   const rows = friends
     .map((friend) => {
-      const total = sumDrinks(drinks.filter((drink) => drink.companionPersonId === friend.id));
+      const total = sumDrinks(drinks.filter((drink) => getCompanionIds(drink).includes(friend.id)));
       const width = Math.max(4, (total / max) * 100);
       return `
         <div class="companion-row">
@@ -701,9 +888,8 @@ function renderActivity() {
     const row = document.createElement("div");
     row.className = "activity-row";
     const beerName = drink.beerName || drink.type || "Cerveza";
-    const companion = getPerson(drink.companionPersonId);
     const volume = `${formatLiters(drinkLiters(drink))} L`;
-    const details = [drink.format, volume, drink.mood, companion ? `con ${companion.name}` : ""]
+    const details = [drink.format, volume, drink.mood, companionNames(drink)]
       .filter(Boolean)
       .join(" · ");
     row.innerHTML = `
@@ -718,6 +904,14 @@ function renderActivity() {
     `;
     els.activityList.append(row);
   });
+}
+
+function companionNames(drink) {
+  const names = getCompanionIds(drink)
+    .map((id) => getPerson(id)?.name)
+    .filter(Boolean);
+  if (!names.length) return "";
+  return `con ${names.join(", ")}`;
 }
 
 function escapeHTML(value) {
@@ -738,9 +932,10 @@ async function addDrink(event) {
   const button = els.drinkForm.querySelector(".primary-button");
   button.disabled = true;
   const now = new Date();
-  const format = els.beerFormat.value;
+  const format = getSelectedFormat();
   const liters = getFormatLiters(format);
-  const selectedPersonId = els.personSelect.value || state.people[0]?.id;
+  const selectedPersonId = getSelectedDrinkerId();
+  const companionPersonIds = getSelectedCompanionIds().filter((id) => id !== selectedPersonId);
   if (!selectedPersonId) {
     button.disabled = false;
     return;
@@ -752,11 +947,12 @@ async function addDrink(event) {
       count: 1,
       date: localDateISO(now),
       beerName: els.beerName.value.trim(),
-      type: els.beerType.value,
+      type: getSelectedChoice(els.beerType, "Lager"),
       format,
       liters,
-      mood: els.drinkMood.value,
-      companionPersonId: els.drinkCompanionPerson.value,
+      mood: getSelectedChoice(els.drinkMood, "Con amigos"),
+      companionPersonId: companionPersonIds[0] || "",
+      companionPersonIds,
       note: els.drinkNote.value.trim(),
       createdAt: now.toISOString(),
       serverCreatedAt: serverTimestamp(),
@@ -838,8 +1034,16 @@ async function removePerson(id) {
       const drinkRef = doc(drinksRef, drink.id);
       if (drink.personId === id) {
         batch.delete(drinkRef);
-      } else if (drink.companionPersonId === id) {
-        batch.set(drinkRef, { companionPersonId: "" }, { merge: true });
+      } else if (getCompanionIds(drink).includes(id)) {
+        const companionPersonIds = getCompanionIds(drink).filter((companionId) => companionId !== id);
+        batch.set(
+          drinkRef,
+          {
+            companionPersonId: companionPersonIds[0] || "",
+            companionPersonIds,
+          },
+          { merge: true },
+        );
       }
     });
     await batch.commit();
@@ -894,6 +1098,7 @@ function importData(event) {
           liters: drink.liters,
           mood: drink.mood,
           companionPersonId: drink.companionPersonId,
+          companionPersonIds: drink.companionPersonIds,
           note: drink.note,
           createdAt: drink.createdAt,
           serverCreatedAt: serverTimestamp(),
@@ -938,11 +1143,67 @@ document.addEventListener("click", (event) => {
   const personBtn = event.target.closest("[data-remove-person]");
   const drinkBtn = event.target.closest("[data-remove-drink]");
   const closeBtn = event.target.closest("[data-close-modal]");
+  const leaderBtn = event.target.closest("[data-toggle-leader]");
+  const drinkerBtn = event.target.closest("[data-person-id]");
+  const companionBtn = event.target.closest("[data-companion-id]");
+  const companionNoneBtn = event.target.closest("[data-companion-none]");
+  const choiceBtn = event.target.closest("[data-choice-value]");
+  const periodBtn = event.target.closest("[data-period]");
+  const statsPersonBtn = event.target.closest("[data-stats-person]");
+  const companionFilterBtn = event.target.closest("[data-companion-filter]");
   const backdrop = event.target.classList.contains("modal-backdrop") ? event.target : null;
 
   if (personBtn) removePerson(personBtn.dataset.removePerson);
   if (drinkBtn) removeDrink(drinkBtn.dataset.removeDrink);
   if (closeBtn) closeModal(closeBtn.closest(".modal-backdrop"));
+  if (leaderBtn) {
+    uiState.expandedLeaderId = uiState.expandedLeaderId === leaderBtn.dataset.toggleLeader
+      ? ""
+      : leaderBtn.dataset.toggleLeader;
+    renderLeaderboard();
+  }
+  if (drinkerBtn && els.personSelect.contains(drinkerBtn)) {
+    els.personSelect.querySelectorAll("[data-person-id]").forEach((button) => {
+      button.classList.toggle("active", button === drinkerBtn);
+    });
+    renderCompanionSelect();
+  }
+  if (choiceBtn && (els.beerType.contains(choiceBtn) || els.drinkMood.contains(choiceBtn))) {
+    choiceBtn.parentElement.querySelectorAll("[data-choice-value]").forEach((button) => {
+      button.classList.toggle("active", button === choiceBtn);
+    });
+  }
+  if (companionNoneBtn && els.drinkCompanionPerson.contains(companionNoneBtn)) {
+    els.drinkCompanionPerson.querySelectorAll("[data-companion-id]").forEach((button) => {
+      button.classList.remove("active");
+    });
+    companionNoneBtn.classList.add("active");
+  }
+  if (companionBtn && els.drinkCompanionPerson.contains(companionBtn)) {
+    companionBtn.classList.toggle("active");
+    const hasCompanions = Boolean(els.drinkCompanionPerson.querySelector("[data-companion-id].active"));
+    els.drinkCompanionPerson.querySelector("[data-companion-none]")?.classList.toggle("active", !hasCompanions);
+  }
+  if (periodBtn && els.periodSelect.contains(periodBtn)) {
+    uiState.leaderboardPeriod = periodBtn.dataset.period;
+    els.periodSelect.querySelectorAll("[data-period]").forEach((button) => {
+      button.classList.toggle("active", button === periodBtn);
+    });
+    renderLeaderboard();
+  }
+  if (statsPersonBtn && els.statsPersonFilter.contains(statsPersonBtn)) {
+    uiState.statsPersonId = statsPersonBtn.dataset.statsPerson;
+    if (uiState.statsPersonId !== "all") uiState.companionPersonId = uiState.statsPersonId;
+    renderStatsPersonFilter();
+    renderCompanionFilter();
+    renderStats();
+    renderCompanionBreakdown();
+  }
+  if (companionFilterBtn && els.companionPersonFilter.contains(companionFilterBtn)) {
+    uiState.companionPersonId = companionFilterBtn.dataset.companionFilter;
+    renderCompanionFilter();
+    renderCompanionBreakdown();
+  }
   if (backdrop) closeModal(backdrop);
 });
 
@@ -953,9 +1214,6 @@ document.addEventListener("keydown", (event) => {
 
 els.drinkForm.addEventListener("submit", addDrink);
 els.friendForm.addEventListener("submit", addFriend);
-els.personSelect.addEventListener("change", renderCompanionSelect);
-els.companionPersonFilter.addEventListener("change", renderCompanionBreakdown);
-els.periodSelect.addEventListener("change", renderLeaderboard);
 els.navItems.forEach((button) => {
   button.addEventListener("click", () => setActiveView(button.dataset.nav));
 });
@@ -967,9 +1225,9 @@ els.openBeerModal.addEventListener("click", () => {
 });
 els.friendsMenuBtn.addEventListener("click", () => openModal(els.friendsPanel));
 els.exportBtn.addEventListener("click", exportData);
-els.importFile.addEventListener("change", importData);
+els.refreshBtn.addEventListener("click", refreshApp);
+els.connectionRefreshBtn.addEventListener("click", refreshApp);
 
 updateNowStamp();
 els.friendColor.value = COLORS[state.people.length % COLORS.length];
-render();
 startFirebase();

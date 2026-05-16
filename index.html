@@ -6,7 +6,7 @@
     <title>Beer Year</title>
     <link rel="stylesheet" href="styles.css" />
   </head>
-  <body>
+  <body class="is-connecting">
     <main class="app-shell">
       <header class="topbar">
         <div class="brand-lockup">
@@ -39,14 +39,14 @@
               <path d="M12 15V3" />
             </svg>
           </button>
-          <label class="icon-button file-button" aria-label="Importar datos" title="Importar datos">
-            <input id="importFile" type="file" accept="application/json" />
+          <button class="icon-button" id="refreshBtn" type="button" aria-label="Refrescar datos" title="Refrescar datos">
             <svg viewBox="0 0 24 24" aria-hidden="true">
-              <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
-              <path d="M17 8l-5-5-5 5" />
-              <path d="M12 3v12" />
+              <path d="M21 12a9 9 0 0 1-15.5 6.2" />
+              <path d="M3 12A9 9 0 0 1 18.5 5.8" />
+              <path d="M18 2v4h-4" />
+              <path d="M6 22v-4h4" />
             </svg>
-          </label>
+          </button>
         </div>
       </header>
 
@@ -80,11 +80,11 @@
               <p class="eyebrow">Ranking</p>
               <h2 id="leaderboardTitle">Leaderboard</h2>
             </div>
-            <select id="periodSelect" aria-label="Periodo">
-              <option value="year">Año</option>
-              <option value="month">Mes</option>
-              <option value="all">Todo</option>
-            </select>
+            <div class="segmented-control" id="periodSelect" role="group" aria-label="Periodo">
+              <button class="active" type="button" data-period="year">Año</button>
+              <button type="button" data-period="month">Mes</button>
+              <button type="button" data-period="all">Todo</button>
+            </div>
           </div>
           <div id="leaderboard" class="leaderboard"></div>
         </section>
@@ -97,6 +97,7 @@
               <p class="eyebrow">Stats</p>
               <h2 id="statsTitle">La cuenta del año</h2>
             </div>
+            <div class="segmented-control player-filter" id="statsPersonFilter" role="group" aria-label="Filtrar stats por jugador"></div>
           </div>
 
           <div class="stats-hero">
@@ -151,7 +152,7 @@
                 <span>Compañeros de mesa</span>
                 <strong>Chelas con cada amigo</strong>
               </div>
-              <select id="companionPersonFilter" aria-label="Jugador"></select>
+              <div class="segmented-control player-filter dark-filter" id="companionPersonFilter" role="group" aria-label="Jugador"></div>
             </div>
             <div class="companion-list" id="companionBreakdown"></div>
           </div>
@@ -228,20 +229,20 @@
             <strong id="todayCount">0</strong>
           </div>
           <div>
-            <span>Próxima meta</span>
+            <span>Año</span>
             <strong id="nextMilestone">10</strong>
           </div>
           <div>
-            <span>Faltan</span>
+            <span>Ritmo</span>
             <strong id="milestoneLeft">10</strong>
           </div>
         </div>
 
         <form id="drinkForm" class="drink-form">
-          <label>
-            <span>Amigo</span>
-            <select id="personSelect" required></select>
-          </label>
+          <fieldset class="choice-picker wide-field" aria-label="Amigo">
+            <legend>Amigo</legend>
+            <div class="choice-row" id="personSelect"></div>
+          </fieldset>
           <label class="now-field">
             <span>Cuándo</span>
             <div class="now-pill">
@@ -267,42 +268,75 @@
               <option value="Artesanal"></option>
             </datalist>
           </label>
-          <label>
-            <span>Tipo</span>
-            <select id="beerType">
-              <option value="Lager">Lager</option>
-              <option value="IPA">IPA</option>
-              <option value="Stout">Stout</option>
-              <option value="Artesanal">Artesanal</option>
-              <option value="Light">Light</option>
-              <option value="Otra">Otra</option>
-            </select>
-          </label>
-          <label>
-            <span>Presentación</span>
-            <select id="beerFormat">
-              <option value="Lata">Lata · 355 ml</option>
-              <option value="Botella">Botella · 355 ml</option>
-              <option value="Grifo">Grifo · 473 ml</option>
-              <option value="Caguama">Caguama · 940 ml</option>
-              <option value="Otra">Otra · 333 ml</option>
-            </select>
-          </label>
-          <label>
-            <span>Plan</span>
-            <select id="drinkMood">
-              <option value="Con amigos">Con amigos</option>
-              <option value="Solo">Solo</option>
-              <option value="Con pareja">Con pareja</option>
-              <option value="Partido">Partido</option>
-              <option value="Evento">Evento</option>
-              <option value="Otro">Otro</option>
-            </select>
-          </label>
-          <label>
-            <span>Con quién</span>
-            <select id="drinkCompanionPerson"></select>
-          </label>
+          <fieldset class="choice-picker" aria-label="Tipo">
+            <legend>Tipo</legend>
+            <div class="choice-row compact-options" id="beerType">
+              <button class="choice-pill active" type="button" data-choice-value="Lager">Lager</button>
+              <button class="choice-pill" type="button" data-choice-value="IPA">IPA</button>
+              <button class="choice-pill" type="button" data-choice-value="Stout">Stout</button>
+              <button class="choice-pill" type="button" data-choice-value="Artesanal">Artesanal</button>
+              <button class="choice-pill" type="button" data-choice-value="Light">Light</button>
+              <button class="choice-pill" type="button" data-choice-value="Otra">Otra</button>
+            </div>
+          </fieldset>
+          <fieldset class="format-picker wide-field" aria-label="Presentación">
+            <legend>Presentación</legend>
+            <label>
+              <input name="beerFormat" type="radio" value="Lata" checked />
+              <span class="format-card">
+                <span class="format-visual can" aria-hidden="true"></span>
+                <strong>Lata</strong>
+                <small>355 ml</small>
+              </span>
+            </label>
+            <label>
+              <input name="beerFormat" type="radio" value="Botella" />
+              <span class="format-card">
+                <span class="format-visual bottle" aria-hidden="true"></span>
+                <strong>Botella</strong>
+                <small>355 ml</small>
+              </span>
+            </label>
+            <label>
+              <input name="beerFormat" type="radio" value="Grifo" />
+              <span class="format-card">
+                <span class="format-visual draft" aria-hidden="true"></span>
+                <strong>Grifo</strong>
+                <small>473 ml</small>
+              </span>
+            </label>
+            <label>
+              <input name="beerFormat" type="radio" value="Caguama" />
+              <span class="format-card">
+                <span class="format-visual caguama" aria-hidden="true"></span>
+                <strong>Caguama</strong>
+                <small>940 ml</small>
+              </span>
+            </label>
+            <label>
+              <input name="beerFormat" type="radio" value="Otra" />
+              <span class="format-card">
+                <span class="format-visual other" aria-hidden="true"></span>
+                <strong>Otra</strong>
+                <small>333 ml</small>
+              </span>
+            </label>
+          </fieldset>
+          <fieldset class="choice-picker wide-field" aria-label="Plan">
+            <legend>Plan</legend>
+            <div class="choice-row compact-options" id="drinkMood">
+              <button class="choice-pill active" type="button" data-choice-value="Con amigos">Con amigos</button>
+              <button class="choice-pill" type="button" data-choice-value="Solo">Solo</button>
+              <button class="choice-pill" type="button" data-choice-value="Con pareja">Con pareja</button>
+              <button class="choice-pill" type="button" data-choice-value="Partido">Partido</button>
+              <button class="choice-pill" type="button" data-choice-value="Evento">Evento</button>
+              <button class="choice-pill" type="button" data-choice-value="Otro">Otro</button>
+            </div>
+          </fieldset>
+          <fieldset class="choice-picker wide-field" aria-label="Con quién">
+            <legend>Con quién</legend>
+            <div class="choice-row companion-options" id="drinkCompanionPerson"></div>
+          </fieldset>
           <label class="wide-field">
             <span>Nota</span>
             <input id="drinkNote" type="text" maxlength="64" placeholder="Bar, partido, playa..." />
@@ -359,6 +393,29 @@
     <div id="rewardToast" class="reward-toast" role="status" aria-live="polite">
       <span>+1</span>
       <strong>Birra sumada</strong>
+    </div>
+
+    <div id="connectionOverlay" class="connection-overlay" role="status" aria-live="polite">
+      <div class="connection-card">
+        <div class="connection-glasses" aria-hidden="true">
+          <span class="connection-glass left">
+            <span class="connection-foam"></span>
+            <span class="connection-beer"></span>
+          </span>
+          <span class="connection-glass right">
+            <span class="connection-foam"></span>
+            <span class="connection-beer"></span>
+          </span>
+          <span class="connection-spark one"></span>
+          <span class="connection-spark two"></span>
+          <span class="connection-spark three"></span>
+        </div>
+        <strong>Conectando al bar</strong>
+        <span id="connectionStatus">Esperando la base de datos real...</span>
+        <button class="secondary-button connection-refresh" id="connectionRefreshBtn" type="button">
+          Refrescar
+        </button>
+      </div>
     </div>
 
     <div id="cheersOverlay" class="cheers-overlay" aria-hidden="true">
