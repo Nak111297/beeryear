@@ -492,6 +492,15 @@ button svg {
   text-align: center;
 }
 
+.bar-value {
+  color: var(--hop-dark);
+  font-family: Georgia, "Times New Roman", serif;
+  font-size: 0.72rem;
+  font-weight: 950;
+  text-align: center;
+  line-height: 1;
+}
+
 .panel {
   padding: 18px;
 }
