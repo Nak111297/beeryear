@@ -17,7 +17,10 @@ Abre `index.html` en el navegador.
 - Breakdown de cuántas chelas se tomó cada jugador con cada amigo.
 - Barra inferior para navegar entre Inicio, Stats e Historial.
 - Stats con litros por presentación, six packs aproximados y gráficas por mes, día de la semana, presentación, tipo y país.
-- Registro con hora automática: cada birra se guarda con timestamp exacto al subirla.
+- Registro con fecha y hora editable (backdate) y cantidad por subida (+1/+2/+3/+6 o manual).
+- Editar cualquier birra ya registrada y renombrar/recolorear amigos.
+- Borrado con opción de deshacer, y confirmación de dos toques al quitar un amigo.
+- Instalable como PWA (manifest + service worker) y funciona offline con caché de Firestore.
 - Firebase Auth anónimo + Firestore realtime para que todos vean el mismo marcador.
 - Exportar/importar JSON para respaldo o migración.
 
