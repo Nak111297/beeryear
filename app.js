@@ -27,6 +27,40 @@ const FORMAT_LITERS = {
   Caguama: 0.94,
   Otra: 0.333,
 };
+const WEEKDAYS = ["Lun", "Mar", "Mié", "Jue", "Vie", "Sáb", "Dom"];
+const COUNTRY_STORAGE_KEY = "beer-year-last-country";
+const DEFAULT_COUNTRY = "Guatemala";
+const COUNTRIES = [
+  { name: "Guatemala", flag: "🇬🇹", zones: ["America/Guatemala"] },
+  { name: "México", flag: "🇲🇽", zones: ["America/Mexico_City", "America/Monterrey", "America/Tijuana", "America/Cancun", "America/Merida", "America/Chihuahua", "America/Hermosillo"] },
+  { name: "El Salvador", flag: "🇸🇻", zones: ["America/El_Salvador"] },
+  { name: "Honduras", flag: "🇭🇳", zones: ["America/Tegucigalpa"] },
+  { name: "Nicaragua", flag: "🇳🇮", zones: ["America/Managua"] },
+  { name: "Costa Rica", flag: "🇨🇷", zones: ["America/Costa_Rica"] },
+  { name: "Panamá", flag: "🇵🇦", zones: ["America/Panama"] },
+  { name: "Belice", flag: "🇧🇿", zones: ["America/Belize"] },
+  { name: "Estados Unidos", flag: "🇺🇸", zones: ["America/New_York", "America/Chicago", "America/Denver", "America/Los_Angeles", "America/Phoenix"] },
+  { name: "Canadá", flag: "🇨🇦", zones: ["America/Toronto", "America/Vancouver", "America/Edmonton", "America/Winnipeg"] },
+  { name: "Colombia", flag: "🇨🇴", zones: ["America/Bogota"] },
+  { name: "Venezuela", flag: "🇻🇪", zones: ["America/Caracas"] },
+  { name: "Ecuador", flag: "🇪🇨", zones: ["America/Guayaquil"] },
+  { name: "Perú", flag: "🇵🇪", zones: ["America/Lima"] },
+  { name: "Bolivia", flag: "🇧🇴", zones: ["America/La_Paz"] },
+  { name: "Chile", flag: "🇨🇱", zones: ["America/Santiago"] },
+  { name: "Argentina", flag: "🇦🇷", zones: ["America/Argentina/Buenos_Aires", "America/Argentina/Cordoba"] },
+  { name: "Uruguay", flag: "🇺🇾", zones: ["America/Montevideo"] },
+  { name: "Paraguay", flag: "🇵🇾", zones: ["America/Asuncion"] },
+  { name: "Brasil", flag: "🇧🇷", zones: ["America/Sao_Paulo", "America/Bahia", "America/Fortaleza"] },
+  { name: "España", flag: "🇪🇸", zones: ["Europe/Madrid", "Atlantic/Canary"] },
+  { name: "Alemania", flag: "🇩🇪", zones: ["Europe/Berlin"] },
+  { name: "Bélgica", flag: "🇧🇪", zones: ["Europe/Brussels"] },
+  { name: "Reino Unido", flag: "🇬🇧", zones: ["Europe/London"] },
+  { name: "Irlanda", flag: "🇮🇪", zones: ["Europe/Dublin"] },
+  { name: "República Dominicana", flag: "🇩🇴", zones: ["America/Santo_Domingo"] },
+  { name: "Cuba", flag: "🇨🇺", zones: ["America/Havana"] },
+  { name: "Puerto Rico", flag: "🇵🇷", zones: ["America/Puerto_Rico"] },
+  { name: "Otro", flag: "🍺", zones: [] },
+];
 const firebaseConfig = {
   apiKey: "AIzaSyC4gsYzlTYIyDpebjXp8IHQzZSsEgcCi84",
   authDomain: "beeryear-cfa32.firebaseapp.com",
@@ -92,8 +126,12 @@ const els = {
   nowStamp: document.querySelector("#nowStamp"),
   beerName: document.querySelector("#beerName"),
   beerType: document.querySelector("#beerType"),
+  customMlField: document.querySelector("#customMlField"),
+  customMl: document.querySelector("#customMl"),
   drinkMood: document.querySelector("#drinkMood"),
   drinkCompanionPerson: document.querySelector("#drinkCompanionPerson"),
+  drinkCountry: document.querySelector("#drinkCountry"),
+  countryHint: document.querySelector("#countryHint"),
   drinkNote: document.querySelector("#drinkNote"),
   todayCount: document.querySelector("#todayCount"),
   nextMilestone: document.querySelector("#nextMilestone"),
@@ -109,8 +147,10 @@ const els = {
   sixPackEquivalent: document.querySelector("#sixPackEquivalent"),
   dailyPace: document.querySelector("#dailyPace"),
   statsMonthChart: document.querySelector("#statsMonthChart"),
+  weekdayChart: document.querySelector("#weekdayChart"),
   formatChart: document.querySelector("#formatChart"),
   typeChart: document.querySelector("#typeChart"),
+  countryChart: document.querySelector("#countryChart"),
   statsPersonFilter: document.querySelector("#statsPersonFilter"),
   companionPersonFilter: document.querySelector("#companionPersonFilter"),
   companionBreakdown: document.querySelector("#companionBreakdown"),
@@ -184,6 +224,7 @@ function normalizeDrinks(drinks) {
         type: drink.type ? String(drink.type) : "Lager",
         format: drink.format ? String(drink.format) : "Lata",
         liters: Number(drink.liters) || getFormatLiters(drink.format || "Lata"),
+        country: drink.country ? String(drink.country) : "",
         mood: drink.mood ? String(drink.mood) : "Con amigos",
         companionPersonId: companionPersonIds[0] || "",
         companionPersonIds,
@@ -322,6 +363,70 @@ function getSelectedFormat() {
   return document.querySelector('input[name="beerFormat"]:checked')?.value || "Lata";
 }
 
+function getCustomMl() {
+  const ml = Number(els.customMl.value);
+  if (!Number.isFinite(ml) || ml <= 0) return Math.round(FORMAT_LITERS.Otra * 1000);
+  return Math.min(3000, Math.max(10, Math.round(ml)));
+}
+
+function getDrinkLitersForFormat(format) {
+  return format === "Otra" ? getCustomMl() / 1000 : getFormatLiters(format);
+}
+
+function syncCustomMlField() {
+  els.customMlField.hidden = getSelectedFormat() !== "Otra";
+}
+
+function countryFlag(name) {
+  return COUNTRIES.find((country) => country.name === name)?.flag || "";
+}
+
+function countryLabel(name) {
+  if (!name) return "";
+  const flag = countryFlag(name);
+  return flag ? `${flag} ${name}` : name;
+}
+
+function detectCountry() {
+  try {
+    const stored = localStorage.getItem(COUNTRY_STORAGE_KEY);
+    if (stored && COUNTRIES.some((country) => country.name === stored)) return stored;
+  } catch {
+    // localStorage may be blocked; fall back to timezone detection.
+  }
+  try {
+    const zone = Intl.DateTimeFormat().resolvedOptions().timeZone;
+    const match = COUNTRIES.find((country) => country.zones.includes(zone));
+    if (match) return match.name;
+  } catch {
+    // Intl can be unavailable in rare environments.
+  }
+  return DEFAULT_COUNTRY;
+}
+
+function rememberCountry(name) {
+  try {
+    localStorage.setItem(COUNTRY_STORAGE_KEY, name);
+  } catch {
+    // Ignore storage failures; selection still applies to the saved drink.
+  }
+}
+
+function populateCountrySelect() {
+  const detected = detectCountry();
+  const current = els.drinkCountry.value || detected;
+  els.drinkCountry.innerHTML = COUNTRIES.map(
+    (country) =>
+      `<option value="${escapeHTML(country.name)}" ${country.name === current ? "selected" : ""}>${country.flag} ${escapeHTML(country.name)}</option>`,
+  ).join("");
+  updateCountryHint();
+}
+
+function updateCountryHint() {
+  const detected = detectCountry();
+  els.countryHint.textContent = els.drinkCountry.value === detected ? `· auto: ${detected}` : "";
+}
+
 function normalizeCompanionIds(drink) {
   const ids = Array.isArray(drink.companionPersonIds)
     ? drink.companionPersonIds
@@ -385,6 +490,7 @@ async function seedInitialDataIfEmpty() {
       type: drink.type,
       format: drink.format,
       liters: drink.liters,
+      country: drink.country,
       mood: drink.mood,
       companionPersonId: drink.companionPersonId,
       companionPersonIds: drink.companionPersonIds,
@@ -686,7 +792,7 @@ function renderLeaderboard() {
 function leaderDrinkMarkup(drink) {
   const beerName = drink.beerName || drink.type || "Cerveza";
   const companions = companionNames(drink);
-  const details = [formatDateTime(drink), drink.format, `${formatLiters(drinkLiters(drink))} L`, companions]
+  const details = [formatDateTime(drink), drink.format, `${formatLiters(drinkLiters(drink))} L`, countryLabel(drink.country), companions]
     .filter(Boolean)
     .join(" · ");
   return `
@@ -721,6 +827,7 @@ function renderStatsMonthChart(drinks) {
 
 function updateMainChartDateControl() {
   const labels = {
+    year: "Año",
     month: "Mes",
     week: "Semana",
     day: "Día",
@@ -804,6 +911,13 @@ function selectedDayHourBars(drinks) {
 
 function mainChartData(drinks, range) {
   const anchor = parseLocalDate(uiState.mainChartAnchorDate);
+  if (range === "year") {
+    const year = anchor.getFullYear();
+    return {
+      label: `Meses de ${year}`,
+      bars: yearMonthChartBars(drinks.filter((drink) => parseLocalDate(drink.date).getFullYear() === year)),
+    };
+  }
   if (range === "week") {
     const start = startOfWeek(anchor);
     const end = addDays(start, 6);
@@ -885,8 +999,37 @@ function renderStats() {
   els.sixPackEquivalent.textContent = `${(liters / (FORMAT_LITERS.Lata * 6)).toFixed(1)}`;
   els.dailyPace.textContent = `${(activeDays ? liters / activeDays : 0).toFixed(2)} L`;
   renderStatsMonthChart(drinks);
+  renderWeekdayChart(drinks);
   renderBreakdownChart(els.formatChart, totalsByKey(drinks, "format"));
   renderBreakdownChart(els.typeChart, totalsByKey(drinks, "type"));
+  renderBreakdownChart(els.countryChart, countryTotals(drinks));
+}
+
+function weekdayBars(drinks) {
+  const totals = Array.from({ length: 7 }, () => 0);
+  drinks.forEach((drink) => {
+    const index = (parseLocalDate(drink.date).getDay() + 6) % 7;
+    totals[index] += Number(drink.count);
+  });
+
+  const peak = Math.max(...totals);
+  return totals.map((total, index) => ({
+    label: WEEKDAYS[index],
+    total,
+    title: `${WEEKDAYS[index]}: ${total}${total && total === peak ? " · día pico" : ""}`,
+  }));
+}
+
+function renderWeekdayChart(drinks) {
+  els.weekdayChart.innerHTML = barChartMarkup(weekdayBars(drinks));
+}
+
+function countryTotals(drinks) {
+  const rows = totalsByKey(
+    drinks.map((drink) => ({ ...drink, country: drink.country || "Sin país" })),
+    "country",
+  );
+  return rows.map(([name, total]) => [name === "Sin país" ? name : countryLabel(name), total]);
 }
 
 function getStatsDrinks() {
@@ -1020,7 +1163,7 @@ function renderActivity() {
     row.className = "activity-row";
     const beerName = drink.beerName || drink.type || "Cerveza";
     const volume = `${formatLiters(drinkLiters(drink))} L`;
-    const details = [drink.format, volume, drink.mood, companionNames(drink)]
+    const details = [drink.format, volume, countryLabel(drink.country), drink.mood, companionNames(drink)]
       .filter(Boolean)
       .join(" · ");
     row.innerHTML = `
@@ -1064,7 +1207,8 @@ async function addDrink(event) {
   button.disabled = true;
   const now = new Date();
   const format = getSelectedFormat();
-  const liters = getFormatLiters(format);
+  const liters = getDrinkLitersForFormat(format);
+  const country = els.drinkCountry.value || "";
   const selectedPersonId = getSelectedDrinkerId();
   const companionPersonIds = getSelectedCompanionIds().filter((id) => id !== selectedPersonId);
   if (!selectedPersonId) {
@@ -1081,6 +1225,7 @@ async function addDrink(event) {
       type: getSelectedChoice(els.beerType, "Lager"),
       format,
       liters,
+      country,
       mood: getSelectedChoice(els.drinkMood, "Con amigos"),
       companionPersonId: companionPersonIds[0] || "",
       companionPersonIds,
@@ -1089,6 +1234,7 @@ async function addDrink(event) {
       serverCreatedAt: serverTimestamp(),
     });
 
+    if (country) rememberCountry(country);
     els.beerName.value = "";
     els.drinkNote.value = "";
     rewardUpload();
@@ -1227,6 +1373,7 @@ function importData(event) {
           type: drink.type,
           format: drink.format,
           liters: drink.liters,
+          country: drink.country,
           mood: drink.mood,
           companionPersonId: drink.companionPersonId,
           companionPersonIds: drink.companionPersonIds,
@@ -1359,9 +1506,15 @@ els.navItems.forEach((button) => {
 els.openBeerModal.addEventListener("click", () => {
   updateNowStamp();
   renderCompanionSelect();
+  populateCountrySelect();
+  syncCustomMlField();
   openModal(els.beerModal);
   setTimeout(() => els.beerName.focus(), 80);
 });
+els.drinkForm.querySelectorAll('input[name="beerFormat"]').forEach((radio) => {
+  radio.addEventListener("change", syncCustomMlField);
+});
+els.drinkCountry.addEventListener("change", updateCountryHint);
 els.friendsMenuBtn.addEventListener("click", () => openModal(els.friendsPanel));
 els.exportBtn.addEventListener("click", exportData);
 els.refreshBtn.addEventListener("click", refreshApp);
@@ -1372,5 +1525,7 @@ els.mainChartDate.addEventListener("change", () => {
 });
 
 updateNowStamp();
+populateCountrySelect();
+syncCustomMlField();
 els.friendColor.value = COLORS[state.people.length % COLORS.length];
 startFirebase();

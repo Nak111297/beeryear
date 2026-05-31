@@ -62,6 +62,7 @@
               <div class="chart-switcher">
                 <span id="mainChartLabel">Distribución por mes</span>
                 <div class="segmented-control mini-segmented" id="mainChartRange" role="group" aria-label="Detalle de gráfica principal">
+                  <button type="button" data-main-chart="year">Año</button>
                   <button class="active" type="button" data-main-chart="month">Mes</button>
                   <button type="button" data-main-chart="week">Semana</button>
                   <button type="button" data-main-chart="day">Día</button>
@@ -143,6 +144,14 @@
               <div class="stats-month-chart" id="statsMonthChart"></div>
             </article>
 
+            <article class="chart-card wide-chart">
+              <div class="chart-heading">
+                <span>Ritmo semanal</span>
+                <strong>Día de la semana</strong>
+              </div>
+              <div class="weekday-chart" id="weekdayChart"></div>
+            </article>
+
             <article class="chart-card">
               <div class="chart-heading">
                 <span>Formato</span>
@@ -157,6 +166,14 @@
                 <strong>Tipos de cerveza</strong>
               </div>
               <div class="breakdown-chart" id="typeChart"></div>
+            </article>
+
+            <article class="chart-card wide-chart">
+              <div class="chart-heading">
+                <span>Mapa</span>
+                <strong>Cervezas por país</strong>
+              </div>
+              <div class="breakdown-chart" id="countryChart"></div>
             </article>
           </section>
 
@@ -332,10 +349,14 @@
               <span class="format-card">
                 <span class="format-visual other" aria-hidden="true"></span>
                 <strong>Otra</strong>
-                <small>333 ml</small>
+                <small>Personalizada</small>
               </span>
             </label>
           </fieldset>
+          <label class="wide-field custom-ml-field" id="customMlField" hidden>
+            <span>Mililitros por chela</span>
+            <input id="customMl" type="number" min="10" max="3000" step="5" value="333" inputmode="numeric" placeholder="ml" />
+          </label>
           <fieldset class="choice-picker wide-field" aria-label="Plan">
             <legend>Plan</legend>
             <div class="choice-row compact-options" id="drinkMood">
@@ -351,6 +372,10 @@
             <legend>Con quién</legend>
             <div class="choice-row companion-options" id="drinkCompanionPerson"></div>
           </fieldset>
+          <label class="wide-field">
+            <span>País <small class="field-hint" id="countryHint"></small></span>
+            <select id="drinkCountry"></select>
+          </label>
           <label class="wide-field">
             <span>Nota</span>
             <input id="drinkNote" type="text" maxlength="64" placeholder="Bar, partido, playa..." />
