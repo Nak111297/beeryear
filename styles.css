@@ -1712,6 +1712,155 @@ input[type="color"] {
   font-weight: 950;
 }
 
+/* --- Quality-of-life controls (fecha/hora, cantidad, editar, deshacer) --- */
+.when-control {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+
+.when-control input {
+  flex: 1 1 auto;
+}
+
+.chip-button {
+  flex: 0 0 auto;
+  min-height: 38px;
+  padding: 0 14px;
+  border: 1px solid rgba(24, 32, 27, 0.2);
+  border-radius: 999px;
+  background: linear-gradient(180deg, #263d31, #14241d);
+  color: var(--chalk);
+  font-weight: 900;
+}
+
+.quantity-field {
+  min-width: 0;
+}
+
+.quantity-control {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+
+.qty-step {
+  display: inline-grid;
+  width: 42px;
+  height: 42px;
+  flex: 0 0 auto;
+  place-items: center;
+  border: 1px solid rgba(24, 32, 27, 0.2);
+  border-radius: 12px;
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.74), rgba(255, 248, 230, 0.9));
+  color: var(--ink);
+  font-size: 1.4rem;
+  font-weight: 950;
+  line-height: 1;
+}
+
+.qty-step:hover {
+  border-color: rgba(231, 165, 31, 0.7);
+}
+
+#drinkCount {
+  width: 72px;
+  flex: 0 0 auto;
+  text-align: center;
+  font-weight: 950;
+}
+
+.qty-quick {
+  display: flex;
+  gap: 6px;
+  margin-left: auto;
+}
+
+.qty-quick button {
+  min-width: 36px;
+  min-height: 34px;
+  border: 1px solid rgba(24, 32, 27, 0.2);
+  border-radius: 999px;
+  background: rgba(255, 253, 246, 0.8);
+  color: var(--ink);
+  font-weight: 900;
+}
+
+.qty-quick button:hover {
+  border-color: rgba(231, 165, 31, 0.7);
+}
+
+.ghost-button {
+  min-height: 34px;
+  padding: 0 12px;
+  border: 1px solid rgba(24, 32, 27, 0.22);
+  border-radius: 999px;
+  background: rgba(255, 253, 246, 0.7);
+  color: var(--ink);
+  font-weight: 900;
+  font-size: 0.82rem;
+}
+
+.ghost-button:hover {
+  border-color: rgba(47, 125, 81, 0.55);
+}
+
+.friend-actions {
+  display: flex;
+  flex: 0 0 auto;
+  gap: 8px;
+}
+
+.danger-button.armed {
+  border-color: var(--berry);
+  background: rgba(159, 50, 71, 0.18);
+  font-weight: 950;
+}
+
+.friend-cancel[hidden] {
+  display: none;
+}
+
+.undo-toast {
+  position: fixed;
+  left: 50%;
+  bottom: 22px;
+  z-index: 13;
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  min-width: 220px;
+  justify-content: space-between;
+  border: 1px solid rgba(231, 165, 31, 0.5);
+  border-radius: 8px;
+  background: #101814;
+  color: var(--chalk);
+  padding: 12px 16px;
+  box-shadow: 0 18px 45px rgba(7, 13, 10, 0.42);
+  opacity: 0;
+  pointer-events: none;
+  transform: translate(-50%, 14px) scale(0.96);
+  transition: opacity 180ms ease, transform 180ms ease;
+}
+
+.undo-toast.show {
+  opacity: 1;
+  pointer-events: auto;
+  transform: translate(-50%, 0) scale(1);
+}
+
+.undo-toast button {
+  flex: 0 0 auto;
+  min-height: 32px;
+  padding: 0 14px;
+  border: 1px solid rgba(255, 209, 102, 0.6);
+  border-radius: 999px;
+  background: rgba(255, 209, 102, 0.16);
+  color: var(--amber);
+  font-weight: 950;
+}
+
 .empty-state {
   display: grid;
   place-items: center;

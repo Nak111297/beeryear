@@ -4,6 +4,13 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Beer Year</title>
+    <meta name="theme-color" content="#10231d" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+    <meta name="apple-mobile-web-app-title" content="Beer Year" />
+    <link rel="manifest" href="/manifest.webmanifest" />
+    <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
+    <link rel="icon" type="image/png" href="/icon-192.png" />
     <link rel="stylesheet" href="styles.css" />
   </head>
   <body class="is-connecting">
@@ -243,7 +250,7 @@
       <section class="modal-card beer-sheet" role="dialog" aria-modal="true" aria-labelledby="trackerTitle">
         <div class="sheet-header">
           <div>
-            <p class="eyebrow">Registro</p>
+            <p class="eyebrow" id="trackerEyebrow">Registro</p>
             <h2 id="trackerTitle">Subir birra</h2>
           </div>
           <button class="icon-button sheet-close" type="button" data-close-modal aria-label="Cerrar">
@@ -274,13 +281,27 @@
             <legend>Amigo</legend>
             <div class="choice-row" id="personSelect"></div>
           </fieldset>
-          <label class="now-field">
-            <span>Cuándo</span>
-            <div class="now-pill">
-              <strong>Ahora</strong>
-              <small id="nowStamp">Guardando hora exacta</small>
+          <label class="when-field">
+            <span>Cuándo <small class="field-hint" id="nowStamp"></small></span>
+            <div class="when-control">
+              <input id="drinkWhen" type="datetime-local" />
+              <button class="chip-button" type="button" id="drinkWhenNow">Ahora</button>
             </div>
           </label>
+          <fieldset class="choice-picker quantity-field" aria-label="Cantidad">
+            <legend>Cuántas</legend>
+            <div class="quantity-control">
+              <button class="qty-step" type="button" id="qtyMinus" aria-label="Menos">−</button>
+              <input id="drinkCount" type="number" min="1" max="99" step="1" value="1" inputmode="numeric" />
+              <button class="qty-step" type="button" id="qtyPlus" aria-label="Más">+</button>
+              <div class="qty-quick">
+                <button type="button" data-qty="1">1</button>
+                <button type="button" data-qty="2">2</button>
+                <button type="button" data-qty="3">3</button>
+                <button type="button" data-qty="6">6</button>
+              </div>
+            </div>
+          </fieldset>
           <label>
             <span>Cerveza</span>
             <input id="beerName" type="text" maxlength="32" list="beerOptions" placeholder="Elegí o escribí..." />
@@ -385,7 +406,7 @@
               <path d="M12 5v14" />
               <path d="M5 12h14" />
             </svg>
-            Sumar birra
+            <span id="drinkSubmitLabel">Sumar birra</span>
           </button>
         </form>
       </section>
@@ -415,8 +436,9 @@
               <path d="M19 8v6" />
               <path d="M22 11h-6" />
             </svg>
-            Agregar
+            <span id="friendSubmitLabel">Agregar</span>
           </button>
+          <button class="danger-button friend-cancel" type="button" id="friendCancelBtn" hidden>Cancelar</button>
         </form>
         <div class="friend-list" id="friendList"></div>
       </aside>
@@ -432,6 +454,11 @@
     <div id="rewardToast" class="reward-toast" role="status" aria-live="polite">
       <span>+1</span>
       <strong>Birra sumada</strong>
+    </div>
+
+    <div id="undoToast" class="undo-toast" role="status" aria-live="polite">
+      <span id="undoToastText">Birra borrada</span>
+      <button type="button" id="undoBtn">Deshacer</button>
     </div>
 
     <div id="connectionOverlay" class="connection-overlay" role="status" aria-live="polite">

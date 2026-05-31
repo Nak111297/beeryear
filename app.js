@@ -9,8 +9,10 @@ import {
   deleteDoc,
   doc,
   getDocs,
-  getFirestore,
+  initializeFirestore,
   onSnapshot,
+  persistentLocalCache,
+  persistentMultipleTabManager,
   serverTimestamp,
   setDoc,
   writeBatch,
@@ -74,7 +76,9 @@ const firebaseConfig = {
 
 const firebaseApp = initializeApp(firebaseConfig);
 const auth = getAuth(firebaseApp);
-const db = getFirestore(firebaseApp);
+const db = initializeFirestore(firebaseApp, {
+  localCache: persistentLocalCache({ tabManager: persistentMultipleTabManager() }),
+});
 const groupRef = doc(db, "groups", GROUP_ID);
 const peopleRef = collection(db, "groups", GROUP_ID, "people");
 const drinksRef = collection(db, "groups", GROUP_ID, "drinks");
@@ -101,7 +105,12 @@ const uiState = {
   companionPersonId: "",
   mainChartRange: "month",
   mainChartAnchorDate: todayISO(),
+  editingDrinkId: "",
+  editingFriendId: "",
 };
+let undoTimer = null;
+let pendingUndo = null;
+let connectionFallbackTimer = null;
 const connectionState = {
   peopleReady: false,
   drinksReady: false,
@@ -124,6 +133,14 @@ const els = {
   drinkForm: document.querySelector("#drinkForm"),
   personSelect: document.querySelector("#personSelect"),
   nowStamp: document.querySelector("#nowStamp"),
+  drinkWhen: document.querySelector("#drinkWhen"),
+  drinkWhenNow: document.querySelector("#drinkWhenNow"),
+  drinkCount: document.querySelector("#drinkCount"),
+  qtyMinus: document.querySelector("#qtyMinus"),
+  qtyPlus: document.querySelector("#qtyPlus"),
+  trackerTitle: document.querySelector("#trackerTitle"),
+  trackerEyebrow: document.querySelector("#trackerEyebrow"),
+  drinkSubmitLabel: document.querySelector("#drinkSubmitLabel"),
   beerName: document.querySelector("#beerName"),
   beerType: document.querySelector("#beerType"),
   customMlField: document.querySelector("#customMlField"),
@@ -139,6 +156,8 @@ const els = {
   friendForm: document.querySelector("#friendForm"),
   friendName: document.querySelector("#friendName"),
   friendColor: document.querySelector("#friendColor"),
+  friendSubmitLabel: document.querySelector("#friendSubmitLabel"),
+  friendCancelBtn: document.querySelector("#friendCancelBtn"),
   friendList: document.querySelector("#friendList"),
   leaderboard: document.querySelector("#leaderboard"),
   periodSelect: document.querySelector("#periodSelect"),
@@ -164,6 +183,9 @@ const els = {
   exportBtn: document.querySelector("#exportBtn"),
   refreshBtn: document.querySelector("#refreshBtn"),
   rewardToast: document.querySelector("#rewardToast"),
+  undoToast: document.querySelector("#undoToast"),
+  undoToastText: document.querySelector("#undoToastText"),
+  undoBtn: document.querySelector("#undoBtn"),
   connectionOverlay: document.querySelector("#connectionOverlay"),
   connectionStatus: document.querySelector("#connectionStatus"),
   connectionRefreshBtn: document.querySelector("#connectionRefreshBtn"),
@@ -263,10 +285,28 @@ function markServerSnapshotReady(kind, snapshot) {
 
 function checkConnectionReady() {
   if (connectionState.connected || !connectionState.peopleReady || !connectionState.drinksReady) return;
+  revealApp();
+}
+
+function revealApp({ degraded = false } = {}) {
+  if (connectionFallbackTimer) {
+    clearTimeout(connectionFallbackTimer);
+    connectionFallbackTimer = null;
+  }
   connectionState.connected = true;
   document.body.classList.remove("is-connecting", "connection-error");
+  document.body.classList.toggle("is-degraded", degraded);
   document.body.classList.add("is-connected");
   render();
+}
+
+function scheduleConnectionFallback() {
+  if (connectionFallbackTimer) clearTimeout(connectionFallbackTimer);
+  connectionFallbackTimer = setTimeout(() => {
+    if (connectionState.connected) return;
+    setConnectionStatus("Entrando con datos guardados...");
+    revealApp({ degraded: true });
+  }, 8000);
 }
 
 function refreshApp() {
@@ -342,15 +382,6 @@ function formatDateTime(drink) {
   }).format(createdAt);
 }
 
-function updateNowStamp() {
-  els.nowStamp.textContent = new Intl.DateTimeFormat("es-GT", {
-    day: "numeric",
-    month: "short",
-    hour: "numeric",
-    minute: "2-digit",
-  }).format(new Date());
-}
-
 function formatLiters(value) {
   return Number(value).toFixed(2).replace(/\.?0+$/, "");
 }
@@ -375,6 +406,55 @@ function getDrinkLitersForFormat(format) {
 
 function syncCustomMlField() {
   els.customMlField.hidden = getSelectedFormat() !== "Otra";
+}
+
+function localDateTimeValue(date = new Date()) {
+  const pad = (value) => String(value).padStart(2, "0");
+  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}T${pad(date.getHours())}:${pad(date.getMinutes())}`;
+}
+
+function getWhenDate() {
+  const value = els.drinkWhen.value;
+  if (!value) return new Date();
+  const parsed = new Date(value);
+  return Number.isNaN(parsed.getTime()) ? new Date() : parsed;
+}
+
+function setWhenToNow() {
+  els.drinkWhen.value = localDateTimeValue(new Date());
+  updateWhenHint();
+}
+
+function updateWhenHint() {
+  const when = getWhenDate();
+  els.nowStamp.textContent = isSameLocalDay(when, new Date()) ? "· hoy" : `· ${formatDate(localDateISO(when))}`;
+}
+
+function getDrinkCount() {
+  const value = Math.round(Number(els.drinkCount.value));
+  if (!Number.isFinite(value) || value < 1) return 1;
+  return Math.min(99, value);
+}
+
+function setDrinkCount(value) {
+  els.drinkCount.value = String(Math.min(99, Math.max(1, Math.round(value) || 1)));
+}
+
+function setSelectedFormat(format) {
+  const radio = els.drinkForm.querySelector(`input[name="beerFormat"][value="${format}"]`)
+    || els.drinkForm.querySelector('input[name="beerFormat"][value="Lata"]');
+  if (radio) radio.checked = true;
+}
+
+function setSelectedChoice(container, value) {
+  const buttons = container.querySelectorAll("[data-choice-value]");
+  let matched = false;
+  buttons.forEach((button) => {
+    const active = button.dataset.choiceValue === value;
+    button.classList.toggle("active", active);
+    if (active) matched = true;
+  });
+  if (!matched && buttons[0]) buttons[0].classList.add("active");
 }
 
 function countryFlag(name) {
@@ -549,6 +629,7 @@ function listenToFirestore() {
 }
 
 async function startFirebase() {
+  scheduleConnectionFallback();
   try {
     setConnectionStatus("Entrando al bar...");
     await signInAnonymously(auth);
@@ -655,8 +736,8 @@ function projectedYearTotal(total) {
   return Math.round((total / elapsed) * totalDays);
 }
 
-function renderPersonSelect() {
-  const currentValue = getSelectedDrinkerId();
+function renderPersonSelect(presetId = null) {
+  const currentValue = presetId ?? getSelectedDrinkerId();
   const selectedId = state.people.some((person) => person.id === currentValue)
     ? currentValue
     : state.people[0]?.id || "";
@@ -672,8 +753,8 @@ function renderPersonSelect() {
     .join("");
 }
 
-function renderCompanionSelect() {
-  const selectedIds = getSelectedCompanionIds();
+function renderCompanionSelect(presetIds = null) {
+  const selectedIds = presetIds ?? getSelectedCompanionIds();
   const drinkerId = getSelectedDrinkerId();
   const companions = state.people.filter((person) => person.id !== drinkerId);
   const validSelectedIds = selectedIds.filter((id) => companions.some((person) => person.id === id));
@@ -734,7 +815,10 @@ function renderFriends() {
         <span class="avatar" style="background:${person.color}">${escapeHTML(initials(person.name))}</span>
         <span>${escapeHTML(person.name)}</span>
       </div>
-      <button class="danger-button" type="button" data-remove-person="${person.id}">Quitar</button>
+      <div class="friend-actions">
+        <button class="ghost-button" type="button" data-edit-person="${person.id}">Editar</button>
+        <button class="danger-button" type="button" data-remove-person="${person.id}">Quitar</button>
+      </div>
     `;
     els.friendList.append(chip);
   });
@@ -1173,6 +1257,7 @@ function renderActivity() {
       </div>
       <div class="activity-actions">
         <span class="beer-badge">${drink.count}</span>
+        <button class="ghost-button" type="button" data-edit-drink="${drink.id}">Editar</button>
         <button class="danger-button" type="button" data-remove-drink="${drink.id}">Borrar</button>
       </div>
     `;
@@ -1200,14 +1285,72 @@ function escapeHTML(value) {
   });
 }
 
+function openAddDrink() {
+  uiState.editingDrinkId = "";
+  els.trackerEyebrow.textContent = "Registro";
+  els.trackerTitle.textContent = "Subir birra";
+  els.drinkSubmitLabel.textContent = "Sumar birra";
+  els.beerName.value = "";
+  els.drinkNote.value = "";
+  setSelectedChoice(els.beerType, "Lager");
+  setSelectedChoice(els.drinkMood, "Con amigos");
+  setSelectedFormat("Lata");
+  els.customMl.value = "333";
+  setDrinkCount(1);
+  setWhenToNow();
+  renderPersonSelect();
+  renderCompanionSelect([]);
+  populateCountrySelect();
+  syncCustomMlField();
+  openModal(els.beerModal);
+  setTimeout(() => els.beerName.focus(), 80);
+}
+
+function openEditDrink(drink) {
+  uiState.editingDrinkId = drink.id;
+  els.trackerEyebrow.textContent = "Editar";
+  els.trackerTitle.textContent = "Editar birra";
+  els.drinkSubmitLabel.textContent = "Guardar cambios";
+  els.beerName.value = drink.beerName || "";
+  els.drinkNote.value = drink.note || "";
+  setSelectedChoice(els.beerType, drink.type || "Lager");
+  setSelectedChoice(els.drinkMood, drink.mood || "Con amigos");
+  const format = drink.format || "Lata";
+  setSelectedFormat(format);
+  const perUnitMl = Math.round((Number(drink.liters) / (Number(drink.count) || 1)) * 1000);
+  els.customMl.value = format === "Otra" && perUnitMl > 0 ? String(perUnitMl) : "333";
+  setDrinkCount(Number(drink.count) || 1);
+  const when = drink.createdAt ? new Date(drink.createdAt) : parseLocalDate(drink.date);
+  els.drinkWhen.value = localDateTimeValue(Number.isNaN(when.getTime()) ? new Date() : when);
+  updateWhenHint();
+  renderPersonSelect(drink.personId);
+  renderCompanionSelect(getCompanionIds(drink));
+  populateCountrySelect();
+  if (drink.country && COUNTRIES.some((country) => country.name === drink.country)) {
+    els.drinkCountry.value = drink.country;
+  }
+  updateCountryHint();
+  syncCustomMlField();
+  openModal(els.beerModal);
+}
+
+function showToast(message, badge = "✓") {
+  els.rewardToast.classList.remove("show");
+  void els.rewardToast.offsetWidth;
+  els.rewardToast.querySelector("span").textContent = badge;
+  els.rewardToast.querySelector("strong").textContent = message;
+  els.rewardToast.classList.add("show");
+}
+
 async function addDrink(event) {
   event.preventDefault();
   if (!state.people.length) return;
   const button = els.drinkForm.querySelector(".primary-button");
   button.disabled = true;
-  const now = new Date();
+  const when = getWhenDate();
+  const count = getDrinkCount();
   const format = getSelectedFormat();
-  const liters = getDrinkLitersForFormat(format);
+  const liters = getDrinkLitersForFormat(format) * count;
   const country = els.drinkCountry.value || "";
   const selectedPersonId = getSelectedDrinkerId();
   const companionPersonIds = getSelectedCompanionIds().filter((id) => id !== selectedPersonId);
@@ -1215,30 +1358,41 @@ async function addDrink(event) {
     button.disabled = false;
     return;
   }
+  const editingId = uiState.editingDrinkId;
+  const payload = {
+    personId: selectedPersonId,
+    count,
+    date: localDateISO(when),
+    beerName: els.beerName.value.trim(),
+    type: getSelectedChoice(els.beerType, "Lager"),
+    format,
+    liters,
+    country,
+    mood: getSelectedChoice(els.drinkMood, "Con amigos"),
+    companionPersonId: companionPersonIds[0] || "",
+    companionPersonIds,
+    note: els.drinkNote.value.trim(),
+    createdAt: when.toISOString(),
+  };
 
   try {
-    await addDoc(drinksRef, {
-      personId: selectedPersonId,
-      count: 1,
-      date: localDateISO(now),
-      beerName: els.beerName.value.trim(),
-      type: getSelectedChoice(els.beerType, "Lager"),
-      format,
-      liters,
-      country,
-      mood: getSelectedChoice(els.drinkMood, "Con amigos"),
-      companionPersonId: companionPersonIds[0] || "",
-      companionPersonIds,
-      note: els.drinkNote.value.trim(),
-      createdAt: now.toISOString(),
-      serverCreatedAt: serverTimestamp(),
-    });
+    if (editingId) {
+      await setDoc(doc(drinksRef, editingId), { ...payload, updatedAt: serverTimestamp() }, { merge: true });
+    } else {
+      await addDoc(drinksRef, { ...payload, serverCreatedAt: serverTimestamp() });
+    }
 
     if (country) rememberCountry(country);
-    els.beerName.value = "";
-    els.drinkNote.value = "";
-    rewardUpload();
-    setTimeout(() => closeModal(els.beerModal), 260);
+    if (editingId) {
+      uiState.editingDrinkId = "";
+      showToast("Cambios guardados");
+      closeModal(els.beerModal);
+    } else {
+      els.beerName.value = "";
+      els.drinkNote.value = "";
+      rewardUpload();
+      setTimeout(() => closeModal(els.beerModal), 260);
+    }
   } catch (error) {
     showFirebaseError(error);
   } finally {
@@ -1249,9 +1403,10 @@ async function addDrink(event) {
 function rewardUpload() {
   const button = els.drinkForm.querySelector(".primary-button");
   const mainScore = document.querySelector(".main-score");
+  const count = getDrinkCount();
 
-  els.rewardToast.querySelector("span").textContent = "+1";
-  els.rewardToast.querySelector("strong").textContent = "Birra sumada";
+  els.rewardToast.querySelector("span").textContent = `+${count}`;
+  els.rewardToast.querySelector("strong").textContent = count > 1 ? `${count} birras sumadas` : "Birra sumada";
   els.rewardToast.classList.remove("show");
   button.classList.remove("just-added");
   mainScore.classList.remove("score-bump");
@@ -1287,20 +1442,49 @@ async function addFriend(event) {
   event.preventDefault();
   const name = els.friendName.value.trim();
   if (!name) return;
-  const id = createId();
+  const color = els.friendColor.value || COLORS[state.people.length % COLORS.length];
+  const editingId = uiState.editingFriendId;
 
   try {
-    await setDoc(doc(peopleRef, id), {
-      name,
-      color: els.friendColor.value || COLORS[state.people.length % COLORS.length],
-      createdAt: serverTimestamp(),
-    });
-
-    els.friendName.value = "";
-    els.friendColor.value = COLORS[(state.people.length + 1) % COLORS.length];
+    if (editingId) {
+      await setDoc(doc(peopleRef, editingId), { name, color }, { merge: true });
+    } else {
+      await setDoc(doc(peopleRef, createId()), { name, color, createdAt: serverTimestamp() });
+    }
+    resetFriendForm();
   } catch (error) {
     showFirebaseError(error);
   }
+}
+
+function openEditFriend(person) {
+  uiState.editingFriendId = person.id;
+  els.friendName.value = person.name;
+  els.friendColor.value = person.color || COLORS[0];
+  els.friendSubmitLabel.textContent = "Guardar";
+  els.friendCancelBtn.hidden = false;
+  els.friendName.focus();
+}
+
+function resetFriendForm() {
+  uiState.editingFriendId = "";
+  els.friendName.value = "";
+  els.friendColor.value = COLORS[state.people.length % COLORS.length];
+  els.friendSubmitLabel.textContent = "Agregar";
+  els.friendCancelBtn.hidden = true;
+}
+
+function armRemoveButton(button) {
+  const original = button.textContent;
+  button.dataset.armed = "1";
+  button.textContent = "¿Seguro?";
+  button.classList.add("armed");
+  setTimeout(() => {
+    if (button.dataset.armed !== "1") return;
+    button.dataset.armed = "";
+    button.textContent = original;
+    button.classList.remove("armed");
+  }, 3500);
 }
 
 async function removePerson(id) {
@@ -1330,8 +1514,54 @@ async function removePerson(id) {
 }
 
 async function removeDrink(id) {
+  const drink = state.drinks.find((item) => item.id === id);
   try {
     await deleteDoc(doc(drinksRef, id));
+    if (drink) showUndoToast(drink);
+  } catch (error) {
+    showFirebaseError(error);
+  }
+}
+
+function showUndoToast(drink) {
+  pendingUndo = drink;
+  const plural = (Number(drink.count) || 1) > 1;
+  els.undoToastText.textContent = plural ? `${drink.count} birras borradas` : "Birra borrada";
+  els.undoToast.classList.add("show");
+  if (undoTimer) clearTimeout(undoTimer);
+  undoTimer = setTimeout(hideUndoToast, 6000);
+}
+
+function hideUndoToast() {
+  els.undoToast.classList.remove("show");
+  pendingUndo = null;
+  if (undoTimer) {
+    clearTimeout(undoTimer);
+    undoTimer = null;
+  }
+}
+
+async function undoDelete() {
+  if (!pendingUndo) return;
+  const drink = pendingUndo;
+  hideUndoToast();
+  try {
+    await setDoc(doc(drinksRef, drink.id), {
+      personId: drink.personId,
+      count: Number(drink.count) || 1,
+      date: drink.date,
+      beerName: drink.beerName || "",
+      type: drink.type || "Lager",
+      format: drink.format || "Lata",
+      liters: Number(drink.liters) || getFormatLiters(drink.format || "Lata"),
+      country: drink.country || "",
+      mood: drink.mood || "Con amigos",
+      companionPersonId: drink.companionPersonId || "",
+      companionPersonIds: getCompanionIds(drink),
+      note: drink.note || "",
+      createdAt: drink.createdAt || new Date().toISOString(),
+      serverCreatedAt: serverTimestamp(),
+    });
   } catch (error) {
     showFirebaseError(error);
   }
@@ -1420,6 +1650,8 @@ function closeModal(modal) {
 document.addEventListener("click", (event) => {
   const personBtn = event.target.closest("[data-remove-person]");
   const drinkBtn = event.target.closest("[data-remove-drink]");
+  const editDrinkBtn = event.target.closest("[data-edit-drink]");
+  const editPersonBtn = event.target.closest("[data-edit-person]");
   const closeBtn = event.target.closest("[data-close-modal]");
   const leaderBtn = event.target.closest("[data-toggle-leader]");
   const drinkerBtn = event.target.closest("[data-person-id]");
@@ -1432,8 +1664,19 @@ document.addEventListener("click", (event) => {
   const companionFilterBtn = event.target.closest("[data-companion-filter]");
   const backdrop = event.target.classList.contains("modal-backdrop") ? event.target : null;
 
-  if (personBtn) removePerson(personBtn.dataset.removePerson);
+  if (personBtn) {
+    if (personBtn.dataset.armed === "1") removePerson(personBtn.dataset.removePerson);
+    else armRemoveButton(personBtn);
+  }
   if (drinkBtn) removeDrink(drinkBtn.dataset.removeDrink);
+  if (editDrinkBtn) {
+    const drink = state.drinks.find((item) => item.id === editDrinkBtn.dataset.editDrink);
+    if (drink) openEditDrink(drink);
+  }
+  if (editPersonBtn) {
+    const person = getPerson(editPersonBtn.dataset.editPerson);
+    if (person) openEditFriend(person);
+  }
   if (closeBtn) closeModal(closeBtn.closest(".modal-backdrop"));
   if (leaderBtn) {
     uiState.expandedLeaderId = uiState.expandedLeaderId === leaderBtn.dataset.toggleLeader
@@ -1503,19 +1746,25 @@ els.friendForm.addEventListener("submit", addFriend);
 els.navItems.forEach((button) => {
   button.addEventListener("click", () => setActiveView(button.dataset.nav));
 });
-els.openBeerModal.addEventListener("click", () => {
-  updateNowStamp();
-  renderCompanionSelect();
-  populateCountrySelect();
-  syncCustomMlField();
-  openModal(els.beerModal);
-  setTimeout(() => els.beerName.focus(), 80);
-});
+els.openBeerModal.addEventListener("click", openAddDrink);
 els.drinkForm.querySelectorAll('input[name="beerFormat"]').forEach((radio) => {
   radio.addEventListener("change", syncCustomMlField);
 });
 els.drinkCountry.addEventListener("change", updateCountryHint);
-els.friendsMenuBtn.addEventListener("click", () => openModal(els.friendsPanel));
+els.drinkWhen.addEventListener("change", updateWhenHint);
+els.drinkWhenNow.addEventListener("click", setWhenToNow);
+els.qtyMinus.addEventListener("click", () => setDrinkCount(getDrinkCount() - 1));
+els.qtyPlus.addEventListener("click", () => setDrinkCount(getDrinkCount() + 1));
+els.drinkCount.addEventListener("change", () => setDrinkCount(getDrinkCount()));
+els.drinkForm.querySelectorAll("[data-qty]").forEach((button) => {
+  button.addEventListener("click", () => setDrinkCount(Number(button.dataset.qty)));
+});
+els.undoBtn.addEventListener("click", undoDelete);
+els.friendCancelBtn.addEventListener("click", resetFriendForm);
+els.friendsMenuBtn.addEventListener("click", () => {
+  resetFriendForm();
+  openModal(els.friendsPanel);
+});
 els.exportBtn.addEventListener("click", exportData);
 els.refreshBtn.addEventListener("click", refreshApp);
 els.connectionRefreshBtn.addEventListener("click", refreshApp);
@@ -1524,8 +1773,16 @@ els.mainChartDate.addEventListener("change", () => {
   renderMonthChart();
 });
 
-updateNowStamp();
 populateCountrySelect();
 syncCustomMlField();
+setWhenToNow();
 els.friendColor.value = COLORS[state.people.length % COLORS.length];
 startFirebase();
+
+if ("serviceWorker" in navigator) {
+  window.addEventListener("load", () => {
+    navigator.serviceWorker.register("/sw.js").catch(() => {
+      // El service worker es opcional; la app funciona sin el.
+    });
+  });
+}
