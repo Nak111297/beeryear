@@ -1026,13 +1026,14 @@ function mainChartData(drinks, range) {
   };
 }
 
-function barChartMarkup(bars) {
+function barChartMarkup(bars, { showValue = false } = {}) {
   const max = Math.max(1, ...bars.map((bar) => bar.total));
   return bars
     .map((bar) => {
       const height = Math.max(6, Math.round((bar.total / max) * 100));
       return `
         <div class="bar-wrap" title="${escapeHTML(bar.title)}">
+          ${showValue ? `<span class="bar-value">${bar.total}</span>` : ""}
           <div class="bar" style="height:${height}px"></div>
           <span class="bar-label">${escapeHTML(bar.label)}</span>
         </div>
@@ -1109,7 +1110,7 @@ function weekdayBars(drinks) {
 }
 
 function renderWeekdayChart(drinks) {
-  els.weekdayChart.innerHTML = barChartMarkup(weekdayBars(drinks));
+  els.weekdayChart.innerHTML = barChartMarkup(weekdayBars(drinks), { showValue: true });
 }
 
 function countryTotals(drinks) {
