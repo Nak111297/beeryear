@@ -405,7 +405,11 @@ function getDrinkLitersForFormat(format) {
 }
 
 function syncCustomMlField() {
-  els.customMlField.hidden = getSelectedFormat() !== "Otra";
+  const isOther = getSelectedFormat() === "Otra";
+  els.customMlField.hidden = !isOther;
+  // Deshabilitar el campo oculto lo excluye de la validacion y del envio del form,
+  // asi un valor invalido escondido no bloquea el boton de sumar birra.
+  els.customMl.disabled = !isOther;
 }
 
 function localDateTimeValue(date = new Date()) {
