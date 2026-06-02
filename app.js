@@ -54,6 +54,7 @@ const COUNTRIES = [
   { name: "Paraguay", flag: "🇵🇾", zones: ["America/Asuncion"] },
   { name: "Brasil", flag: "🇧🇷", zones: ["America/Sao_Paulo", "America/Bahia", "America/Fortaleza"] },
   { name: "España", flag: "🇪🇸", zones: ["Europe/Madrid", "Atlantic/Canary"] },
+  { name: "Italia", flag: "🇮🇹", zones: ["Europe/Rome"] },
   { name: "Alemania", flag: "🇩🇪", zones: ["Europe/Berlin"] },
   { name: "Bélgica", flag: "🇧🇪", zones: ["Europe/Brussels"] },
   { name: "Reino Unido", flag: "🇬🇧", zones: ["Europe/London"] },
@@ -61,6 +62,7 @@ const COUNTRIES = [
   { name: "República Dominicana", flag: "🇩🇴", zones: ["America/Santo_Domingo"] },
   { name: "Cuba", flag: "🇨🇺", zones: ["America/Havana"] },
   { name: "Puerto Rico", flag: "🇵🇷", zones: ["America/Puerto_Rico"] },
+  { name: "Otro (Europa)", flag: "🇪🇺", zones: [] },
   { name: "Otro", flag: "🍺", zones: [] },
 ];
 const firebaseConfig = {
@@ -101,7 +103,7 @@ let state = { people: [...initialState.people], drinks: [] };
 const uiState = {
   leaderboardPeriod: "year",
   expandedLeaderId: "",
-  statsPersonId: "all",
+  statsPersonIds: [],
   companionPersonId: "",
   mainChartRange: "month",
   mainChartAnchorDate: todayISO(),
@@ -482,6 +484,7 @@ function detectCountry() {
     const zone = Intl.DateTimeFormat().resolvedOptions().timeZone;
     const match = COUNTRIES.find((country) => country.zones.includes(zone));
     if (match) return match.name;
+    if (zone && zone.startsWith("Europe/")) return "Otro (Europa)";
   } catch {
     // Intl can be unavailable in rare environments.
   }
@@ -776,7 +779,7 @@ function renderCompanionSelect(presetIds = null) {
 }
 
 function renderCompanionFilter() {
-  const currentValue = uiState.companionPersonId || uiState.statsPersonId;
+  const currentValue = uiState.companionPersonId || uiState.statsPersonIds[0];
   const selectedId = state.people.some((person) => person.id === currentValue)
     ? currentValue
     : state.people[0]?.id || "";
@@ -793,15 +796,13 @@ function renderCompanionFilter() {
 }
 
 function renderStatsPersonFilter() {
-  const selectedId = uiState.statsPersonId === "all" || state.people.some((person) => person.id === uiState.statsPersonId)
-    ? uiState.statsPersonId
-    : "all";
-  uiState.statsPersonId = selectedId;
+  uiState.statsPersonIds = uiState.statsPersonIds.filter((id) => state.people.some((person) => person.id === id));
+  const allActive = uiState.statsPersonIds.length === 0;
   els.statsPersonFilter.innerHTML = [
-    `<button class="${selectedId === "all" ? "active" : ""}" type="button" data-stats-person="all">Todos</button>`,
+    `<button class="${allActive ? "active" : ""}" type="button" data-stats-person="all">Todos</button>`,
     ...state.people.map(
       (person) => `
-        <button class="${person.id === selectedId ? "active" : ""}" type="button" data-stats-person="${person.id}">
+        <button class="${uiState.statsPersonIds.includes(person.id) ? "active" : ""}" type="button" data-stats-person="${person.id}">
           ${escapeHTML(person.name)}
         </button>
       `,
@@ -836,8 +837,9 @@ function renderLeaderboard() {
   els.leaderboard.innerHTML = "";
 
   totals.forEach((person, index) => {
+    const isChampion = index === 0 && person.total > 0;
     const row = document.createElement("div");
-    row.className = "leader-card";
+    row.className = `leader-card${isChampion ? " champion" : ""}`;
     row.style.setProperty("--leader-width", `${Math.max(5, (person.total / max) * 100)}%`);
     const expanded = uiState.expandedLeaderId === person.id;
     const personDrinks = state.drinks
@@ -846,7 +848,7 @@ function renderLeaderboard() {
     const visibleDrinks = personDrinks.slice(0, 12);
     row.innerHTML = `
       <button class="leader-row" type="button" data-toggle-leader="${person.id}" aria-expanded="${expanded}">
-        <div class="rank">#${index + 1}</div>
+        <div class="rank">${isChampion ? `<span class="crown" aria-label="Líder" title="Líder">👑</span>` : `#${index + 1}`}</div>
         <div class="leader-info">
           <strong>${escapeHTML(person.name)}</strong>
           <span>${person.sessions} subidas registradas · tocar para ver chelas</span>
@@ -1056,7 +1058,8 @@ function renderStats() {
   const topCompanionId = topCompanionByDrinks(drinks);
   const topCompanion = getPerson(topCompanionId);
   const topFriend = totalsByPerson("year")[0];
-  const selectedPerson = getPerson(uiState.statsPersonId);
+  const selectedIds = uiState.statsPersonIds;
+  const selectedNames = selectedIds.map((id) => getPerson(id)?.name).filter(Boolean);
 
   const stats = [
     ["Cerveza top", topBeer || "Sin datos"],
@@ -1066,10 +1069,10 @@ function renderStats() {
     ["Tipo top", topType || "Sin datos"],
     ["Plan top", topPlan || "Sin datos"],
     [
-      uiState.statsPersonId === "all" ? "MVP" : "Jugador",
-      uiState.statsPersonId === "all"
+      selectedIds.length === 0 ? "MVP" : selectedIds.length === 1 ? "Jugador" : "Selección",
+      selectedIds.length === 0
         ? topFriend?.total ? topFriend.name : "Sin datos"
-        : selectedPerson?.name || "Sin datos",
+        : selectedNames.join(" + ") || "Sin datos",
     ],
   ];
 
@@ -1123,8 +1126,9 @@ function countryTotals(drinks) {
 
 function getStatsDrinks() {
   const drinks = yearDrinks();
-  if (uiState.statsPersonId === "all") return drinks;
-  return drinks.filter((drink) => drink.personId === uiState.statsPersonId);
+  if (!uiState.statsPersonIds.length) return drinks;
+  const selected = new Set(uiState.statsPersonIds);
+  return drinks.filter((drink) => selected.has(drink.personId));
 }
 
 function totalsByKey(items, key) {
@@ -1192,8 +1196,12 @@ function renderCompanionBreakdown() {
   }
 
   const rows = friends
-    .map((friend) => {
-      const total = sumDrinks(drinks.filter((drink) => getCompanionIds(drink).includes(friend.id)));
+    .map((friend) => ({
+      friend,
+      total: sumDrinks(drinks.filter((drink) => getCompanionIds(drink).includes(friend.id))),
+    }))
+    .sort((a, b) => b.total - a.total || a.friend.name.localeCompare(b.friend.name))
+    .map(({ friend, total }) => {
       const width = Math.max(4, (total / max) * 100);
       return `
         <div class="companion-row">
@@ -1726,8 +1734,16 @@ document.addEventListener("click", (event) => {
     renderMonthChart();
   }
   if (statsPersonBtn && els.statsPersonFilter.contains(statsPersonBtn)) {
-    uiState.statsPersonId = statsPersonBtn.dataset.statsPerson;
-    if (uiState.statsPersonId !== "all") uiState.companionPersonId = uiState.statsPersonId;
+    const value = statsPersonBtn.dataset.statsPerson;
+    if (value === "all") {
+      uiState.statsPersonIds = [];
+    } else {
+      const selected = new Set(uiState.statsPersonIds);
+      if (selected.has(value)) selected.delete(value);
+      else selected.add(value);
+      uiState.statsPersonIds = [...selected];
+    }
+    if (uiState.statsPersonIds.length === 1) uiState.companionPersonId = uiState.statsPersonIds[0];
     renderStatsPersonFilter();
     renderCompanionFilter();
     renderStats();
