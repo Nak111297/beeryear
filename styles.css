@@ -493,12 +493,24 @@ button svg {
 }
 
 .bar-value {
-  color: var(--hop-dark);
+  color: var(--amber);
   font-family: Georgia, "Times New Roman", serif;
-  font-size: 0.72rem;
+  font-size: 0.66rem;
   font-weight: 950;
   text-align: center;
   line-height: 1;
+  min-height: 0.7rem;
+}
+
+/* Las graficas de stats van sobre tarjetas claras: etiquetas y numeros oscuros. */
+.stats-month-chart .bar-label,
+.weekday-chart .bar-label {
+  color: var(--muted);
+}
+
+.stats-month-chart .bar-value,
+.weekday-chart .bar-value {
+  color: var(--hop-dark);
 }
 
 .panel {
